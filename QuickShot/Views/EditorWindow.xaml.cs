@@ -91,6 +91,11 @@ namespace QuickShot.Views
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Key == Key.Escape)
+            {
+                Close();
+                return;
+            }
             if (e.Key == Key.Delete && _selectedElement != null)
             {
                 if (e.OriginalSource is TextBox) return;

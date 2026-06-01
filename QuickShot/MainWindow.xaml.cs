@@ -304,10 +304,6 @@ namespace QuickShot
             {
                 ShowEditor(bmp);
             }
-            else
-            {
-                Show();
-            }
         }
 
         private async void FullCapture_Click(object sender, RoutedEventArgs e)
@@ -318,10 +314,6 @@ namespace QuickShot
             if (bmp != null)
             {
                 ShowEditor(bmp);
-            }
-            else
-            {
-                Show();
             }
         }
 
@@ -336,8 +328,6 @@ namespace QuickShot
             {
                 if (capBmp != null)
                     ShowEditor(capBmp);
-                else
-                    Show();
             };
             overlay.Show();
         }
@@ -371,7 +361,6 @@ namespace QuickShot
 
             var editor = new EditorWindow(bitmap);
             editor.Show();
-            editor.Closed += (s, ev) => Show();
         }
     }
 }
