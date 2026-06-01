@@ -307,5 +307,24 @@ namespace QuickShot.Views
             if (Captured != null)
                 Captured(this, bmp);
         }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+            try
+            {
+                if (ScreenImage != null)
+                {
+                    ScreenImage.Source = null;
+                }
+                if (_screenBitmap != null)
+                {
+                    _screenBitmap.Dispose();
+                    _screenBitmap = null;
+                }
+                MemoryHelper.TrimWorkingSet();
+            }
+            catch { }
+        }
     }
 }

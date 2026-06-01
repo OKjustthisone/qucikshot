@@ -68,5 +68,24 @@ namespace QuickShot.Views
         {
             Close();
         }
+
+        protected override void OnClosed(System.EventArgs e)
+        {
+            base.OnClosed(e);
+            try
+            {
+                if (PinImage != null)
+                {
+                    PinImage.Source = null;
+                }
+                if (_bitmap != null)
+                {
+                    _bitmap.Dispose();
+                    _bitmap = null;
+                }
+                MemoryHelper.TrimWorkingSet();
+            }
+            catch { }
+        }
     }
 }

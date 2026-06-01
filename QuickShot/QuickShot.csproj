@@ -63,6 +63,7 @@
     </Compile>
     <Compile Include="Helpers\NativeMethods.cs" />
     <Compile Include="Helpers\ScreenshotHelper.cs" />
+    <Compile Include="Helpers\MemoryHelper.cs" />
     <Compile Include="Converters\BoolToVisibilityConverter.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>

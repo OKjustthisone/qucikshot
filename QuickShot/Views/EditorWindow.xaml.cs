@@ -838,6 +838,33 @@ namespace QuickShot.Views
             Close();
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+            try
+            {
+                if (_originalBitmap != null)
+                {
+                    _originalBitmap.Dispose();
+                    _originalBitmap = null;
+                }
+                if (_annotations != null)
+                {
+                    _annotations.Clear();
+                }
+                if (_undoStack != null)
+                {
+                    _undoStack.Clear();
+                }
+                if (ScreenshotImage != null)
+                {
+                    ScreenshotImage.Source = null;
+                }
+                MemoryHelper.TrimWorkingSet();
+            }
+            catch { }
+        }
+
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)

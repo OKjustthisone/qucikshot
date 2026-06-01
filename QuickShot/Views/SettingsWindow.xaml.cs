@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using QuickShot.Helpers;
 
 namespace QuickShot.Views
 {
@@ -96,6 +97,16 @@ namespace QuickShot.Views
                     SavePathBox.Text = dialog.SelectedPath;
                 }
             }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+            try
+            {
+                MemoryHelper.TrimWorkingSet();
+            }
+            catch { }
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)

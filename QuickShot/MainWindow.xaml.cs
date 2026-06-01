@@ -30,6 +30,15 @@ namespace QuickShot
             InitializeComponent();
             SettingsWindow.LoadSettings();
             Loaded += OnLoaded;
+            IsVisibleChanged += MainWindow_IsVisibleChanged;
+        }
+
+        private void MainWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (!(bool)e.NewValue)
+            {
+                MemoryHelper.TrimWorkingSet();
+            }
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
