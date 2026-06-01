@@ -1,0 +1,36 @@
+## Ignore Visual Studio build outputs, user settings, and temporary files
+
+# Build outputs
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleasePublic/
+x64/
+x86/
+bin/
+obj/
+
+# Visual Studio cache and configuration directories
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Mono / Rider / VS Code cache directories
+.idea/
+.vscode/
+*.sln.iml
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary SDK and installation files in this workspace
+dotnet-install.ps1
+dotnet-sdk.zip
+
+# Local IDE directories
+.codegraph/
+.claude/

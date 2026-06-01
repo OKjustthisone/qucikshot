@@ -1,0 +1,46 @@
+<Window x:Class="QuickShot.Views.PinWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        Topmost="True"
+        Icon="../icon.png">
+    <Window.Resources>
+        <Style x:Key="PinToolButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#40FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder" Background="White" CornerRadius="8"
+           BorderBrush="#FF6B35" BorderThickness="2"
+           MouseEnter="RootBorder_MouseEnter" MouseLeave="RootBorder_MouseLeave">
+        <Grid>
+            <Image x:Name="PinImage" Stretch="None" Margin="2"/>
+            <Border x:Name="ToolBar" Background="#B0000000" CornerRadius="6" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="6" Padding="2" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="&#x1F4CB;" Style="{StaticResource PinToolButton}" Click="Copy_Click" Width="28" Height="28" ToolTip="复制"/>
+                    <Button Content="&#x1F4BE;" Style="{StaticResource PinToolButton}" Click="Save_Click" Width="28" Height="28" ToolTip="保存"/>
+                    <Button Content="&#x2715;" Style="{StaticResource PinToolButton}" Click="Close_Click" Width="28" Height="28" ToolTip="关闭"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
