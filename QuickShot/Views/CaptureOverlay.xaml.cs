@@ -256,8 +256,6 @@ namespace QuickShot.Views
         {
             var pos = e.GetPosition(OverlayCanvas);
             double elapsed = (DateTime.Now - _mouseDownTime).TotalMilliseconds;
-            double dx = pos.X - _mouseDownPoint.X;
-            double dy = pos.Y - _mouseDownPoint.Y;
 
             if (!_isDragging && elapsed < CLICK_THRESHOLD_MS && _highlightedWindow != IntPtr.Zero)
             {
@@ -268,29 +266,51 @@ namespace QuickShot.Views
                 int h = rect.Height;
                 if (w > 0 && h > 0)
                 {
-                    int px = (int)(x - SystemParameters.VirtualScreenLeft * _dpiX);
-                    int py = (int)(y - SystemParameters.VirtualScreenTop * _dpiY);
-                    var captured = ScreenshotHelper.CropBitmap(_screenBitmap, px, py, w, h);
-                    FinishCapture(captured);
-                    return;
+                    int px = (int)Math.Round(x - SystemParameters.VirtualScreenLeft * _dpiX);
+                    int py = (int)Math.Round(y - SystemParameters.VirtualScreenTop * _dpiY);
+                    
+                    if (px < 0) px = 0;
+                    if (py < 0) py = 0;
+                    if (px + w > _screenBitmap.Width) w = _screenBitmap.Width - px;
+                    if (py + h > _screenBitmap.Height) h = _screenBitmap.Height - py;
+
+                    if (w > 0 && h > 0)
+                    {
+                        var captured = ScreenshotHelper.CropBitmap(_screenBitmap, px, py, w, h);
+                        FinishCapture(captured);
+                        return;
+                    }
                 }
             }
 
             if (_isDragging && _hasSelection)
             {
-                double w = Math.Abs(pos.X - _mouseDownPoint.X);
-                double h = Math.Abs(pos.Y - _mouseDownPoint.Y);
+                double x1 = _mouseDownPoint.X;
+                double x2 = pos.X;
+                double y1 = _mouseDownPoint.Y;
+                double y2 = pos.Y;
+
+                double w = Math.Abs(x2 - x1);
+                double h = Math.Abs(y2 - y1);
 
                 if (w > 5 && h > 5)
                 {
-                    int px = (int)(Math.Min(_mouseDownPoint.X, pos.X) * _dpiX);
-                    int py = (int)(Math.Min(_mouseDownPoint.Y, pos.Y) * _dpiY);
-                    int pw = (int)(w * _dpiX);
-                    int ph = (int)(h * _dpiY);
+                    int px = (int)Math.Round(Math.Min(x1, x2) * _dpiX);
+                    int py = (int)Math.Round(Math.Min(y1, y2) * _dpiY);
+                    int pw = (int)Math.Round(Math.Max(x1, x2) * _dpiX) - px;
+                    int ph = (int)Math.Round(Math.Max(y1, y2) * _dpiY) - py;
 
-                    var captured = ScreenshotHelper.CropBitmap(_screenBitmap, px, py, pw, ph);
-                    FinishCapture(captured);
-                    return;
+                    if (px < 0) px = 0;
+                    if (py < 0) py = 0;
+                    if (px + pw > _screenBitmap.Width) pw = _screenBitmap.Width - px;
+                    if (py + ph > _screenBitmap.Height) ph = _screenBitmap.Height - py;
+
+                    if (pw > 0 && ph > 0)
+                    {
+                        var captured = ScreenshotHelper.CropBitmap(_screenBitmap, px, py, pw, ph);
+                        FinishCapture(captured);
+                        return;
+                    }
                 }
             }
 

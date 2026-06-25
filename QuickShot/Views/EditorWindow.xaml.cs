@@ -51,8 +51,10 @@ namespace QuickShot.Views
         private bool _isRotating;
         private double _initialAngle;
         private Point _rotateCenter;
+        private System.Windows.Threading.DispatcherTimer _autoCloseTimer;
+        private DateTime _lastActivityTime;
 
-        public EditorWindow(Bitmap bitmap)
+        public EditorWindow(Bitmap bitmap, string autoSavedPath = null)
         {
             InitializeComponent();
             _originalBitmap = bitmap;
@@ -82,6 +84,46 @@ namespace QuickShot.Views
             };
             KeyDown += Window_KeyDown;
             _currentTool = "";
+
+            // Initialize auto-close timer (5 minutes inactivity)
+            _lastActivityTime = DateTime.Now;
+            _autoCloseTimer = new System.Windows.Threading.DispatcherTimer();
+            _autoCloseTimer.Interval = TimeSpan.FromSeconds(10);
+            _autoCloseTimer.Tick += AutoCloseTimer_Tick;
+            _autoCloseTimer.Start();
+
+            // Display auto-saved status if present
+            if (!string.IsNullOrEmpty(autoSavedPath))
+            {
+                Loaded += (s, e) => ShowSavedStatus("已自动保存: ", autoSavedPath);
+            }
+        }
+
+        private void AutoCloseTimer_Tick(object sender, EventArgs e)
+        {
+            if (DateTime.Now - _lastActivityTime >= TimeSpan.FromMinutes(5))
+            {
+                _autoCloseTimer.Stop();
+                Close();
+            }
+        }
+
+        protected override void OnPreviewKeyDown(KeyEventArgs e)
+        {
+            _lastActivityTime = DateTime.Now;
+            base.OnPreviewKeyDown(e);
+        }
+
+        protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+        {
+            _lastActivityTime = DateTime.Now;
+            base.OnPreviewMouseDown(e);
+        }
+
+        protected override void OnPreviewMouseMove(MouseEventArgs e)
+        {
+            _lastActivityTime = DateTime.Now;
+            base.OnPreviewMouseMove(e);
         }
 
         private void UpdateFillColor()
@@ -754,10 +796,26 @@ namespace QuickShot.Views
         private Bitmap GetFinalBitmap()
         {
             DeselectAll();
-            var renderBitmap = new RenderTargetBitmap(
-                (int)EditorCanvas.Width, (int)EditorCanvas.Height,
-                96, 96, PixelFormats.Pbgra32);
-            renderBitmap.Render(EditorCanvas);
+            int width = (int)Math.Round(EditorCanvas.Width);
+            int height = (int)Math.Round(EditorCanvas.Height);
+            if (width <= 0) width = 1;
+            if (height <= 0) height = 1;
+
+            var renderBitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var brush = new VisualBrush(EditorCanvas)
+                {
+                    Stretch = Stretch.None,
+                    AlignmentX = AlignmentX.Left,
+                    AlignmentY = AlignmentY.Top
+                };
+                dc.DrawRectangle(brush, null, new Rect(0, 0, width, height));
+            }
+            renderBitmap.Render(visual);
+
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(renderBitmap));
             using (var stream = new MemoryStream())
@@ -766,6 +824,30 @@ namespace QuickShot.Views
                 stream.Position = 0;
                 return new Bitmap(stream);
             }
+        }
+
+        private void ShowSavedStatus(string prefix, string filePath)
+        {
+            StatusText.Inlines.Clear();
+            StatusText.Inlines.Add(new System.Windows.Documents.Run(prefix));
+            
+            var hyperlink = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(filePath))
+            {
+                Foreground = new SolidColorBrush(Color.FromRgb(0, 103, 192)),
+                TextDecorations = TextDecorations.Underline,
+                Cursor = Cursors.Hand
+            };
+            
+            hyperlink.Click += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", string.Format("/select,\"{0}\"", filePath));
+                }
+                catch { }
+            };
+            
+            StatusText.Inlines.Add(hyperlink);
         }
 
         private void Copy_Click(object sender, RoutedEventArgs e)
@@ -789,7 +871,7 @@ namespace QuickShot.Views
                 string fullPath = System.IO.Path.Combine(defaultPath, filename);
                 
                 bmp.Save(fullPath, ImageFormat.Png);
-                StatusText.Text = "已自动保存: " + fullPath;
+                ShowSavedStatus("已自动保存: ", fullPath);
             }
             catch (Exception ex)
             {
@@ -815,7 +897,7 @@ namespace QuickShot.Views
                     var bmp = GetFinalBitmap();
                     if (dlg.FileName.EndsWith(".jpg")) bmp.Save(dlg.FileName, ImageFormat.Jpeg);
                     else bmp.Save(dlg.FileName, ImageFormat.Png);
-                    StatusText.Text = "已保存: " + dlg.FileName;
+                    ShowSavedStatus("已保存: ", dlg.FileName);
                 }
                 catch (Exception ex)
                 {
@@ -848,6 +930,11 @@ namespace QuickShot.Views
             base.OnClosed(e);
             try
             {
+                if (_autoCloseTimer != null)
+                {
+                    _autoCloseTimer.Stop();
+                    _autoCloseTimer = null;
+                }
                 if (_originalBitmap != null)
                 {
                     _originalBitmap.Dispose();

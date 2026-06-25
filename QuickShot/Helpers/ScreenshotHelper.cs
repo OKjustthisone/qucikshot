@@ -60,6 +60,12 @@ namespace QuickShot.Helpers
 
         public static BitmapSource BitmapToBitmapSource(Bitmap bitmap)
         {
+            try
+            {
+                bitmap.SetResolution(96f, 96f);
+            }
+            catch { }
+
             using (MemoryStream stream = new MemoryStream())
             {
                 bitmap.Save(stream, ImageFormat.Png);

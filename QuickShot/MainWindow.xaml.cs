@@ -89,6 +89,7 @@ namespace QuickShot
                 contextMenu.MenuItems.Add("显示主界面", (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); });
                 contextMenu.MenuItems.Add("区域截图", (s, e) => StartRegionCapture());
                 contextMenu.MenuItems.Add("设置", (s, e) => OpenSettings());
+                contextMenu.MenuItems.Add("关闭所有截图", (s, e) => CloseAllEditorWindows());
                 contextMenu.MenuItems.Add("-");
                 contextMenu.MenuItems.Add("退出", (s, e) => {
                     _isShuttingDown = true;
@@ -339,6 +340,7 @@ namespace QuickShot
                 ScreenshotHelper.SaveToClipboard(bitmap);
             }
 
+            string autoSavedPath = null;
             if (SettingsWindow.AutoSave)
             {
                 string defaultPath = DefaultSavePath;
@@ -352,6 +354,7 @@ namespace QuickShot
                     string filename = "screenshot_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
                     string fullPath = Path.Combine(defaultPath, filename);
                     bitmap.Save(fullPath, System.Drawing.Imaging.ImageFormat.Png);
+                    autoSavedPath = fullPath;
                 }
                 catch (Exception ex)
                 {
@@ -359,8 +362,24 @@ namespace QuickShot
                 }
             }
 
-            var editor = new EditorWindow(bitmap);
+            var editor = new EditorWindow(bitmap, autoSavedPath);
             editor.Show();
+        }
+
+        public static void CloseAllEditorWindows()
+        {
+            var windowsToClose = new System.Collections.Generic.List<Window>();
+            foreach (Window win in Application.Current.Windows)
+            {
+                if (win is EditorWindow || win is PinWindow)
+                {
+                    windowsToClose.Add(win);
+                }
+            }
+            foreach (var win in windowsToClose)
+            {
+                try { win.Close(); } catch { }
+            }
         }
     }
 }
