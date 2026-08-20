@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -25,8 +27,13 @@ namespace QuickShot.Views
         private const int CLICK_THRESHOLD_PX = 5;
 
         private readonly Bitmap _preCapturedBitmap;
-        private double _dpiX = 1.0;
-        private double _dpiY = 1.0;
+        private double _scaleX = 1.0;
+        private double _scaleY = 1.0;
+        private int _virtLeft = 0;
+        private int _virtTop = 0;
+        private Color _currentPixelColor = Colors.White;
+        private string _currentHex = "#FFFFFF";
+        private string _currentRgb = "RGB: (255, 255, 255)";
 
         public CaptureOverlay()
         {
@@ -39,6 +46,9 @@ namespace QuickShot.Views
             _preCapturedBitmap = preCapturedBitmap;
             _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureScreen();
 
+            _virtLeft = System.Windows.Forms.SystemInformation.VirtualScreen.Left;
+            _virtTop = System.Windows.Forms.SystemInformation.VirtualScreen.Top;
+
             double sw = SystemParameters.VirtualScreenWidth;
             double sh = SystemParameters.VirtualScreenHeight;
             double sl = SystemParameters.VirtualScreenLeft;
@@ -48,6 +58,10 @@ namespace QuickShot.Views
             Top = st;
             Width = sw;
             Height = sh;
+
+            // Calculate precise scaling ratio between WPF DIPs and physical pixels
+            _scaleX = (double)_screenBitmap.Width / sw;
+            _scaleY = (double)_screenBitmap.Height / sh;
 
             ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
             ScreenImage.Width = sw;
@@ -59,16 +73,6 @@ namespace QuickShot.Views
             DimmerRight.Width = sw; DimmerRight.Height = sh;
 
             HideAllDimmer();
-
-            SourceInitialized += (s, e) =>
-            {
-                var source = PresentationSource.FromVisual(this);
-                if (source != null && source.CompositionTarget != null)
-                {
-                    _dpiX = source.CompositionTarget.TransformToDevice.M11;
-                    _dpiY = source.CompositionTarget.TransformToDevice.M22;
-                }
-            };
 
             MouseDown += OnMouseDown;
             MouseMove += OnMouseMove;
@@ -121,6 +125,11 @@ namespace QuickShot.Views
                 if (Captured != null)
                     Captured(this, null);
             }
+            else if (e.Key == Key.C)
+            {
+                Clipboard.SetText(_currentHex);
+                MagnifierHexText.Text = "已复制: " + _currentHex;
+            }
         }
 
         private void OnMouseDown(object sender, MouseButtonEventArgs e)
@@ -145,31 +154,25 @@ namespace QuickShot.Views
 
         private void ShowColorContextMenu(Point pos)
         {
-            int ix = (int)((pos.X + SystemParameters.VirtualScreenLeft) * _dpiX);
-            int iy = (int)((pos.Y + SystemParameters.VirtualScreenTop) * _dpiY);
+            int px = (int)Math.Round(pos.X * _scaleX);
+            int py = (int)Math.Round(pos.Y * _scaleY);
 
-            if (ix >= 0 && ix < _screenBitmap.Width && iy >= 0 && iy < _screenBitmap.Height)
+            if (px >= 0 && px < _screenBitmap.Width && py >= 0 && py < _screenBitmap.Height)
             {
-                var pixel = _screenBitmap.GetPixel(ix, iy);
-                string rgbStr = string.Format("RGB: {0}, {1}, {2}", pixel.R, pixel.G, pixel.B);
+                var pixel = _screenBitmap.GetPixel(px, py);
+                string rgbStr = string.Format("RGB: ({0}, {1}, {2})", pixel.R, pixel.G, pixel.B);
                 string hexStr = string.Format("#{0:X2}{1:X2}{2:X2}", pixel.R, pixel.G, pixel.B);
 
                 var menu = new ContextMenu();
 
-                var rgbItem = new MenuItem { Header = rgbStr + " (点击复制)" };
-                rgbItem.Click += (s, ev) =>
-                {
-                    Clipboard.SetText(rgbStr);
-                };
+                var hexItem = new MenuItem { Header = "复制 HEX: " + hexStr };
+                hexItem.Click += (s, ev) => Clipboard.SetText(hexStr);
 
-                var hexItem = new MenuItem { Header = hexStr + " (点击复制)" };
-                hexItem.Click += (s, ev) =>
-                {
-                    Clipboard.SetText(hexStr);
-                };
+                var rgbItem = new MenuItem { Header = "复制 RGB: " + rgbStr };
+                rgbItem.Click += (s, ev) => Clipboard.SetText(rgbStr);
 
-                menu.Items.Add(rgbItem);
                 menu.Items.Add(hexItem);
+                menu.Items.Add(rgbItem);
 
                 menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
                 menu.IsOpen = true;
@@ -179,23 +182,48 @@ namespace QuickShot.Views
         private void OnMouseMove(object sender, MouseEventArgs e)
         {
             var pos = e.GetPosition(OverlayCanvas);
-            int ix = (int)((pos.X + SystemParameters.VirtualScreenLeft) * _dpiX);
-            int iy = (int)((pos.Y + SystemParameters.VirtualScreenTop) * _dpiY);
+            int px = (int)Math.Round(pos.X * _scaleX);
+            int py = (int)Math.Round(pos.Y * _scaleY);
 
-            if (ix >= 0 && ix < _screenBitmap.Width && iy >= 0 && iy < _screenBitmap.Height)
+            if (px >= 0 && px < _screenBitmap.Width && py >= 0 && py < _screenBitmap.Height)
             {
-                var pixel = _screenBitmap.GetPixel(ix, iy);
-                var wpfColor = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
-                ColorFill.Fill = new SolidColorBrush(wpfColor);
-                ColorPreview.Visibility = Visibility.Visible;
-                Canvas.SetLeft(ColorPreview, Math.Min(pos.X + 20, Width - 60));
-                Canvas.SetTop(ColorPreview, Math.Min(pos.Y + 20, Height - 60));
+                var pixel = _screenBitmap.GetPixel(px, py);
+                _currentPixelColor = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
+                _currentHex = string.Format("#{0:X2}{1:X2}{2:X2}", pixel.R, pixel.G, pixel.B);
+                _currentRgb = string.Format("RGB: ({0}, {1}, {2})", pixel.R, pixel.G, pixel.B);
 
-                InfoPanel.Visibility = Visibility.Visible;
-                InfoText.Text = string.Format("{0}x{1}  RGB:{2},{3},{4}  #{5:X2}{6:X2}{7:X2}",
-                    ix, iy, pixel.R, pixel.G, pixel.B, pixel.R, pixel.G, pixel.B);
-                Canvas.SetLeft(InfoPanel, Math.Min(pos.X + 20, Width - 180));
-                Canvas.SetTop(InfoPanel, Math.Max(10, pos.Y - 50));
+                MagnifierColorFill.Fill = new SolidColorBrush(_currentPixelColor);
+                MagnifierHexText.Text = _currentHex;
+                MagnifierRgbText.Text = _currentRgb;
+
+                int screenX = _virtLeft + px;
+                int screenY = _virtTop + py;
+                MagnifierPosText.Text = string.Format("POS: ({0}, {1})", screenX, screenY);
+
+                // Update zoomed pixel grid view
+                UpdateMagnifierImage(px, py);
+
+                MagnifierPanel.Visibility = Visibility.Visible;
+
+                // Smart positioning to keep magnifier visible and avoid covering cursor
+                double panelWidth = 152;
+                double panelHeight = 160;
+                double panelLeft = pos.X + 20;
+                double panelTop = pos.Y + 20;
+
+                if (panelLeft + panelWidth > Width)
+                {
+                    panelLeft = pos.X - panelWidth - 10;
+                }
+                if (panelTop + panelHeight > Height)
+                {
+                    panelTop = pos.Y - panelHeight - 10;
+                }
+                if (panelLeft < 0) panelLeft = 10;
+                if (panelTop < 0) panelTop = 10;
+
+                Canvas.SetLeft(MagnifierPanel, panelLeft);
+                Canvas.SetTop(MagnifierPanel, panelTop);
             }
 
             if (e.LeftButton == MouseButtonState.Pressed)
@@ -222,11 +250,17 @@ namespace QuickShot.Views
                     SelectionBorder.Height = h;
                     SelectionBorder.Visibility = Visibility.Visible;
                     UpdateDimmer(x, y, w, h);
+
+                    int selW = (int)Math.Round(w * _scaleX);
+                    int selH = (int)Math.Round(h * _scaleY);
+                    MagnifierPosText.Text = string.Format("尺寸: {0} x {1}", selW, selH);
                 }
             }
             else
             {
-                var pt = new NativeMethods.POINT(ix, iy);
+                int screenX = _virtLeft + px;
+                int screenY = _virtTop + py;
+                var pt = new NativeMethods.POINT(screenX, screenY);
                 IntPtr hWnd = NativeMethods.WindowFromPoint(pt);
                 if (hWnd != IntPtr.Zero)
                 {
@@ -238,10 +272,15 @@ namespace QuickShot.Views
                         {
                             _highlightedWindow = hWnd;
                             var rect = NativeMethods.GetDwmWindowRect(hWnd);
-                            Canvas.SetLeft(WindowHighlight, rect.Left / _dpiX - SystemParameters.VirtualScreenLeft);
-                            Canvas.SetTop(WindowHighlight, rect.Top / _dpiY - SystemParameters.VirtualScreenTop);
-                            WindowHighlight.Width = rect.Width / _dpiX;
-                            WindowHighlight.Height = rect.Height / _dpiY;
+                            double winLeft = (rect.Left - _virtLeft) / _scaleX;
+                            double winTop = (rect.Top - _virtTop) / _scaleY;
+                            double winWidth = rect.Width / _scaleX;
+                            double winHeight = rect.Height / _scaleY;
+
+                            Canvas.SetLeft(WindowHighlight, winLeft);
+                            Canvas.SetTop(WindowHighlight, winTop);
+                            WindowHighlight.Width = Math.Max(0, winWidth);
+                            WindowHighlight.Height = Math.Max(0, winHeight);
                             WindowHighlight.Visibility = Visibility.Visible;
                             return;
                         }
@@ -250,6 +289,28 @@ namespace QuickShot.Views
                 WindowHighlight.Visibility = Visibility.Collapsed;
                 _highlightedWindow = IntPtr.Zero;
             }
+        }
+
+        private void UpdateMagnifierImage(int cx, int cy)
+        {
+            try
+            {
+                int zoomW = 17;
+                int zoomH = 10;
+                int startX = cx - zoomW / 2;
+                int startY = cy - zoomH / 2;
+
+                using (Bitmap zoomBmp = new Bitmap(zoomW, zoomH, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                {
+                    using (Graphics g = Graphics.FromImage(zoomBmp))
+                    {
+                        g.Clear(System.Drawing.Color.Black);
+                        g.DrawImage(_screenBitmap, new Rectangle(0, 0, zoomW, zoomH), startX, startY, zoomW, zoomH, GraphicsUnit.Pixel);
+                    }
+                    MagnifierImage.Source = ScreenshotHelper.BitmapToBitmapSource(zoomBmp);
+                }
+            }
+            catch { }
         }
 
         private void OnMouseUp(object sender, MouseButtonEventArgs e)
@@ -266,11 +327,11 @@ namespace QuickShot.Views
                 int h = rect.Height;
                 if (w > 0 && h > 0)
                 {
-                    int px = (int)Math.Round(x - SystemParameters.VirtualScreenLeft * _dpiX);
-                    int py = (int)Math.Round(y - SystemParameters.VirtualScreenTop * _dpiY);
-                    
-                    if (px < 0) px = 0;
-                    if (py < 0) py = 0;
+                    int px = x - _virtLeft;
+                    int py = y - _virtTop;
+
+                    if (px < 0) { w += px; px = 0; }
+                    if (py < 0) { h += py; py = 0; }
                     if (px + w > _screenBitmap.Width) w = _screenBitmap.Width - px;
                     if (py + h > _screenBitmap.Height) h = _screenBitmap.Height - py;
 
@@ -290,18 +351,20 @@ namespace QuickShot.Views
                 double y1 = _mouseDownPoint.Y;
                 double y2 = pos.Y;
 
-                double w = Math.Abs(x2 - x1);
-                double h = Math.Abs(y2 - y1);
+                double minX = Math.Min(x1, x2);
+                double maxX = Math.Max(x1, x2);
+                double minY = Math.Min(y1, y2);
+                double maxY = Math.Max(y1, y2);
 
-                if (w > 5 && h > 5)
+                if (maxX - minX > 5 && maxY - minY > 5)
                 {
-                    int px = (int)Math.Round(Math.Min(x1, x2) * _dpiX);
-                    int py = (int)Math.Round(Math.Min(y1, y2) * _dpiY);
-                    int pw = (int)Math.Round(Math.Max(x1, x2) * _dpiX) - px;
-                    int ph = (int)Math.Round(Math.Max(y1, y2) * _dpiY) - py;
+                    int px = (int)Math.Round(minX * _scaleX);
+                    int py = (int)Math.Round(minY * _scaleY);
+                    int pw = (int)Math.Round(maxX * _scaleX) - px;
+                    int ph = (int)Math.Round(maxY * _scaleY) - py;
 
-                    if (px < 0) px = 0;
-                    if (py < 0) py = 0;
+                    if (px < 0) { pw += px; px = 0; }
+                    if (py < 0) { ph += py; py = 0; }
                     if (px + pw > _screenBitmap.Width) pw = _screenBitmap.Width - px;
                     if (py + ph > _screenBitmap.Height) ph = _screenBitmap.Height - py;
 
@@ -336,6 +399,10 @@ namespace QuickShot.Views
                 if (ScreenImage != null)
                 {
                     ScreenImage.Source = null;
+                }
+                if (MagnifierImage != null)
+                {
+                    MagnifierImage.Source = null;
                 }
                 if (_screenBitmap != null)
                 {

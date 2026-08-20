@@ -5,7 +5,7 @@
         Cursor="Cross" Topmost="True" ResizeMode="NoResize"
         ShowInTaskbar="False">
     <Canvas x:Name="OverlayCanvas">
-        <Image x:Name="ScreenImage" Stretch="None"/>
+        <Image x:Name="ScreenImage" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
 
         <Rectangle x:Name="DimmerTop" Fill="#80000000"/>
         <Rectangle x:Name="DimmerBottom" Fill="#80000000"/>
@@ -17,14 +17,44 @@
 
         <Rectangle x:Name="SelectionBorder" Stroke="#FF6B35" StrokeThickness="2" Fill="Transparent" Visibility="Collapsed"/>
 
-        <Border x:Name="InfoPanel" Background="#1E1E1E" CornerRadius="8" Padding="10,6" Visibility="Collapsed" Panel.ZIndex="100">
-            <TextBlock x:Name="InfoText" Foreground="White" FontSize="11" FontFamily="Consolas"/>
-        </Border>
+        <!-- Magnifier & Pixel Inspector Panel -->
+        <Border x:Name="MagnifierPanel" Background="#1E1E1E" CornerRadius="8" BorderBrush="#3A3A3A" BorderThickness="1"
+                Padding="8" Visibility="Collapsed" Panel.ZIndex="100">
+            <Border.Effect>
+                <DropShadowEffect ShadowDepth="4" BlurRadius="12" Opacity="0.4" Color="#000000"/>
+            </Border.Effect>
+            <StackPanel Width="136">
+                <!-- Magnified Pixel Grid View -->
+                <Border Width="136" Height="80" BorderBrush="#444444" BorderThickness="1" Background="#000000" CornerRadius="4" ClipToBounds="True">
+                    <Grid>
+                        <Image x:Name="MagnifierImage" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        <!-- Center Crosshair / Target Box -->
+                        <Rectangle Width="10" Height="10" Stroke="#00FFCC" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Line X1="0" Y1="40" X2="136" Y2="40" Stroke="#40FFFFFF" StrokeThickness="1" StrokeDashArray="2 2"/>
+                        <Line X1="68" Y1="0" X2="68" Y2="80" Stroke="#40FFFFFF" StrokeThickness="1" StrokeDashArray="2 2"/>
+                    </Grid>
+                </Border>
 
-        <Border x:Name="ColorPreview" Width="44" Height="44" CornerRadius="22"
-                BorderThickness="3" BorderBrush="White"
-                Visibility="Collapsed" Panel.ZIndex="100">
-            <Rectangle x:Name="ColorFill" Fill="Red" RadiusX="19" RadiusY="19"/>
+                <!-- Color Swatch & Value Info -->
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <Border Grid.Column="0" Width="22" Height="36" CornerRadius="4" BorderBrush="#555" BorderThickness="1" VerticalAlignment="Center">
+                        <Rectangle x:Name="MagnifierColorFill" RadiusX="3" RadiusY="3"/>
+                    </Border>
+                    
+                    <StackPanel Grid.Column="1" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="MagnifierHexText" Text="#FFFFFF" Foreground="#00FFCC" FontSize="11" FontWeight="Bold" FontFamily="Consolas"/>
+                        <TextBlock x:Name="MagnifierRgbText" Text="RGB: (255, 255, 255)" Foreground="#DDDDDD" FontSize="9.5" FontFamily="Consolas"/>
+                        <TextBlock x:Name="MagnifierPosText" Text="POS: (1280, 720)" Foreground="#AAAAAA" FontSize="9.5" FontFamily="Consolas"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Text="[C] 复制颜色  [右键] 菜单" Foreground="#777777" FontSize="8.5" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
         </Border>
 
         <TextBlock x:Name="TipText" Text="单击选中窗口 / 拖动选择区域 / ESC 取消" Foreground="#CCCCCC" FontSize="13"
