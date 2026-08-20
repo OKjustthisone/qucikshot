@@ -46,8 +46,8 @@ namespace QuickShot.Views
             _preCapturedBitmap = preCapturedBitmap;
             _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureScreen();
 
-            _virtLeft = System.Windows.Forms.SystemInformation.VirtualScreen.Left;
-            _virtTop = System.Windows.Forms.SystemInformation.VirtualScreen.Top;
+            _virtLeft = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+            _virtTop = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
 
             double sw = SystemParameters.VirtualScreenWidth;
             double sh = SystemParameters.VirtualScreenHeight;

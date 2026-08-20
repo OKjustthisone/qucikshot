@@ -65,8 +65,6 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -113,82 +111,94 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#EAEAEA" BorderThickness="0,0,0,1" Height="36">
-                <StackPanel Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center">
-                    <TextBlock Text="描边颜色" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FF6B35" Click="Color_Click" Tag="#FF6B35"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FF0000" Click="Color_Click" Tag="#FF0000"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#00FF00" Click="Color_Click" Tag="#00FF00"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#0000FF" Click="Color_Click" Tag="#0000FF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FFFF00" Click="Color_Click" Tag="#FFFF00"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#00FFFF" Click="Color_Click" Tag="#00FFFF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FF00FF" Click="Color_Click" Tag="#FF00FF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FFFFFF" Click="Color_Click" Tag="#FFFFFF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#000000" Click="Color_Click" Tag="#000000"/>
-                    <Button x:Name="ActiveColorBtn" Style="{StaticResource ColorBtn}" Background="#FF6B35" Margin="8,0,0,0" BorderBrush="#202020"/>
-                    <Rectangle Width="1" Fill="#D6D6D6" Margin="12,4"/>
-                    <TextBlock Text="粗细" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <Slider x:Name="ThicknessSlider" Minimum="1" Maximum="20" Value="2" Width="100" VerticalAlignment="Center"
-                            TickFrequency="1" IsSnapToTickEnabled="True" Foreground="{StaticResource AccentColor}"/>
-                    <TextBlock Text="{Binding Value, ElementName=ThicknessSlider, StringFormat={}{0:F0}px}" Foreground="{StaticResource TextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                </StackPanel>
-            </Border>
+            <!-- Image Workspace -->
+            <Grid Grid.Row="1">
+                <ScrollViewer x:Name="EditorScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                              Background="#E2E2E2" Padding="20" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                    <Canvas x:Name="EditorCanvas" Background="Transparent"
+                            MouseDown="Canvas_MouseDown" MouseMove="Canvas_MouseMove" MouseUp="Canvas_MouseUp"
+                            KeyDown="Canvas_KeyDown" Focusable="True"
+                            Cursor="Cross">
+                        <Canvas.LayoutTransform>
+                            <ScaleTransform x:Name="CanvasScaleTransform" ScaleX="1.0" ScaleY="1.0"/>
+                        </Canvas.LayoutTransform>
+                        <Image x:Name="ScreenshotImage" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        <!-- Selection Adorner Container -->
+                        <Canvas x:Name="SelectionAdorner" Visibility="Collapsed" Panel.ZIndex="999" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle x:Name="SelectionIndicator" Stroke="#0067C0" StrokeThickness="1.5" Fill="Transparent"
+                                       StrokeDashArray="3 3" Width="{Binding Width, ElementName=SelectionAdorner}" Height="{Binding Height, ElementName=SelectionAdorner}"/>
+                            
+                            <!-- Drag/Move Handle -->
+                            <Border x:Name="DragHandle" Width="18" Height="18" Background="#0067C0" CornerRadius="9"
+                                    Cursor="SizeAll" MouseDown="DragHandle_MouseDown" MouseMove="DragHandle_MouseMove" MouseUp="DragHandle_MouseUp"
+                                    ToolTip="拖拽移动">
+                                <TextBlock Text="✛" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+                            </Border>
 
-            <Border Grid.Row="2" Background="#F9F9F9" BorderBrush="#EAEAEA" BorderThickness="0,0,0,1" Height="36">
-                <StackPanel Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center">
-                    <TextBlock Text="填充颜色" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FF6B35" Click="FillColor_Click" Tag="#FF6B35"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FF0000" Click="FillColor_Click" Tag="#FF0000"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#00FF00" Click="FillColor_Click" Tag="#00FF00"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#0000FF" Click="FillColor_Click" Tag="#0000FF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#FFFFFF" Click="FillColor_Click" Tag="#FFFFFF"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="#000000" Click="FillColor_Click" Tag="#000000"/>
-                    <Button Style="{StaticResource ColorBtn}" Background="Transparent" BorderBrush="#666" Click="FillColor_Click" Tag="Transparent"/>
-                    <Button x:Name="ActiveFillBtn" Style="{StaticResource ColorBtn}" Background="Transparent" Margin="8,0,0,0" BorderBrush="Gray"/>
-                    <Rectangle Width="1" Fill="#D6D6D6" Margin="12,4"/>
-                    <TextBlock Text="填充透明度" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <Slider x:Name="FillAlphaSlider" Minimum="0" Maximum="255" Value="0" Width="100" VerticalAlignment="Center"
-                            TickFrequency="10" IsSnapToTickEnabled="True" Foreground="{StaticResource AccentColor}"/>
-                    <TextBlock Text="{Binding Value, ElementName=FillAlphaSlider, StringFormat={}{0:F0}/255}" Foreground="{StaticResource TextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                </StackPanel>
-            </Border>
+                            <!-- Resize Handle -->
+                            <Border x:Name="ResizeHandle" Width="12" Height="12" Background="#0067C0" BorderBrush="White" BorderThickness="1.5" CornerRadius="6"
+                                    Cursor="SizeNWSE" MouseDown="ResizeHandle_MouseDown" MouseMove="ResizeHandle_MouseMove" MouseUp="ResizeHandle_MouseUp"
+                                    ToolTip="调整大小"/>
 
-            <ScrollViewer x:Name="EditorScrollViewer" Grid.Row="3" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                          Background="#E2E2E2" Padding="20" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
-                <Canvas x:Name="EditorCanvas" Background="Transparent"
-                        MouseDown="Canvas_MouseDown" MouseMove="Canvas_MouseMove" MouseUp="Canvas_MouseUp"
-                        KeyDown="Canvas_KeyDown" Focusable="True"
-                        Cursor="Cross">
-                    <Canvas.LayoutTransform>
-                        <ScaleTransform x:Name="CanvasScaleTransform" ScaleX="1.0" ScaleY="1.0"/>
-                    </Canvas.LayoutTransform>
-                    <Image x:Name="ScreenshotImage" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                    <!-- Selection Adorner Container -->
-                    <Canvas x:Name="SelectionAdorner" Visibility="Collapsed" Panel.ZIndex="999" RenderTransformOrigin="0.5,0.5">
-                        <Rectangle x:Name="SelectionIndicator" Stroke="#0067C0" StrokeThickness="1.5" Fill="Transparent"
-                                   StrokeDashArray="3 3" Width="{Binding Width, ElementName=SelectionAdorner}" Height="{Binding Height, ElementName=SelectionAdorner}"/>
-                        
-                        <!-- Drag/Move Handle -->
-                        <Border x:Name="DragHandle" Width="18" Height="18" Background="#0067C0" CornerRadius="9"
-                                Cursor="SizeAll" MouseDown="DragHandle_MouseDown" MouseMove="DragHandle_MouseMove" MouseUp="DragHandle_MouseUp"
-                                ToolTip="拖拽移动">
-                            <TextBlock Text="✛" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
-                        </Border>
-
-                        <!-- Resize Handle -->
-                        <Border x:Name="ResizeHandle" Width="12" Height="12" Background="#0067C0" BorderBrush="White" BorderThickness="1.5" CornerRadius="6"
-                                Cursor="SizeNWSE" MouseDown="ResizeHandle_MouseDown" MouseMove="ResizeHandle_MouseMove" MouseUp="ResizeHandle_MouseUp"
-                                ToolTip="调整大小"/>
-
-                        <!-- Rotate Handle -->
-                        <Border x:Name="RotateHandle" Width="12" Height="12" Background="#4CAF50" BorderBrush="White" BorderThickness="1.5" CornerRadius="6"
-                                Cursor="Hand" MouseDown="RotateHandle_MouseDown" MouseMove="RotateHandle_MouseMove" MouseUp="RotateHandle_MouseUp"
-                                ToolTip="旋转"/>
+                            <!-- Rotate Handle -->
+                            <Border x:Name="RotateHandle" Width="12" Height="12" Background="#4CAF50" BorderBrush="White" BorderThickness="1.5" CornerRadius="6"
+                                    Cursor="Hand" MouseDown="RotateHandle_MouseDown" MouseMove="RotateHandle_MouseMove" MouseUp="RotateHandle_MouseUp"
+                                    ToolTip="旋转"/>
+                        </Canvas>
                     </Canvas>
-                </Canvas>
-            </ScrollViewer>
+                </ScrollViewer>
 
-            <Border Grid.Row="4" Background="#EAEAEA" Height="32" CornerRadius="0,0,11,11">
+                <!-- Floating Property Popup in Top-Right Corner of Image Area -->
+                <Border x:Name="FloatingPropertyPanel" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,12,16,0" Background="#FFFFFF" CornerRadius="8" BorderBrush="#E0E0E0" BorderThickness="1"
+                        Padding="10,8" Visibility="Collapsed" Panel.ZIndex="1000">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" BlurRadius="12" Opacity="0.18" Color="#000000"/>
+                    </Border.Effect>
+                    <StackPanel Orientation="Vertical">
+                        <!-- Stroke Property Row -->
+                        <StackPanel x:Name="StrokePropertyRow" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="描边" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FF6B35" Click="Color_Click" Tag="#FF6B35"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FF0000" Click="Color_Click" Tag="#FF0000"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#00FF00" Click="Color_Click" Tag="#00FF00"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#0000FF" Click="Color_Click" Tag="#0000FF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FFFF00" Click="Color_Click" Tag="#FFFF00"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#00FFFF" Click="Color_Click" Tag="#00FFFF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FF00FF" Click="Color_Click" Tag="#FF00FF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FFFFFF" Click="Color_Click" Tag="#FFFFFF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#000000" Click="Color_Click" Tag="#000000"/>
+                            <Button x:Name="ActiveColorBtn" Style="{StaticResource ColorBtn}" Background="#FF6B35" Margin="6,0,0,0" BorderBrush="#202020"/>
+                            <Rectangle Width="1" Fill="#E0E0E0" Margin="10,2"/>
+                            <TextBlock Text="粗细" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Slider x:Name="ThicknessSlider" Minimum="1" Maximum="20" Value="2" Width="80" VerticalAlignment="Center"
+                                    TickFrequency="1" IsSnapToTickEnabled="True" Foreground="{StaticResource AccentColor}"/>
+                            <TextBlock Text="{Binding Value, ElementName=ThicknessSlider, StringFormat={}{0:F0}px}" Foreground="{StaticResource TextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- Fill Property Row (For Rect, Ellipse) -->
+                        <StackPanel x:Name="FillPropertyRow" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0">
+                            <TextBlock Text="填充" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FF6B35" Click="FillColor_Click" Tag="#FF6B35"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FF0000" Click="FillColor_Click" Tag="#FF0000"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#00FF00" Click="FillColor_Click" Tag="#00FF00"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#0000FF" Click="FillColor_Click" Tag="#0000FF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#FFFFFF" Click="FillColor_Click" Tag="#FFFFFF"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="#000000" Click="FillColor_Click" Tag="#000000"/>
+                            <Button Style="{StaticResource ColorBtn}" Background="Transparent" BorderBrush="#666" Click="FillColor_Click" Tag="Transparent" ToolTip="无填充"/>
+                            <Button x:Name="ActiveFillBtn" Style="{StaticResource ColorBtn}" Background="Transparent" Margin="6,0,0,0" BorderBrush="Gray"/>
+                            <Rectangle Width="1" Fill="#E0E0E0" Margin="10,2"/>
+                            <TextBlock Text="透明度" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Slider x:Name="FillAlphaSlider" Minimum="0" Maximum="255" Value="0" Width="80" VerticalAlignment="Center"
+                                    TickFrequency="10" IsSnapToTickEnabled="True" Foreground="{StaticResource AccentColor}"/>
+                            <TextBlock Text="{Binding Value, ElementName=FillAlphaSlider, StringFormat={}{0:F0}/255}" Foreground="{StaticResource TextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Bottom Status Bar -->
+            <Border Grid.Row="2" Background="#EAEAEA" Height="32" CornerRadius="0,0,11,11">
                 <Grid Margin="12,0">
                     <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextSecondary}" FontSize="11"
                               VerticalAlignment="Center" HorizontalAlignment="Left"/>

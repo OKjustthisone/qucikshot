@@ -72,6 +72,10 @@ namespace QuickShot.Helpers
 
         public const int SM_CXSCREEN = 0;
         public const int SM_CYSCREEN = 1;
+        public const int SM_XVIRTUALSCREEN = 76;
+        public const int SM_YVIRTUALSCREEN = 77;
+        public const int SM_CXVIRTUALSCREEN = 78;
+        public const int SM_CYVIRTUALSCREEN = 79;
         public const uint MOD_ALT = 0x0001;
         public const uint MOD_CONTROL = 0x0002;
         public const uint MOD_SHIFT = 0x0004;

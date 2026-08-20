@@ -12,12 +12,21 @@ namespace QuickShot.Helpers
     {
         public static Bitmap CaptureScreen()
         {
-            int x = System.Windows.Forms.SystemInformation.VirtualScreen.Left;
-            int y = System.Windows.Forms.SystemInformation.VirtualScreen.Top;
-            int width = System.Windows.Forms.SystemInformation.VirtualScreen.Width;
-            int height = System.Windows.Forms.SystemInformation.VirtualScreen.Height;
+            int x = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+            int y = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+            int width = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
+            int height = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
+
+            if (width <= 0 || height <= 0)
+            {
+                width = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSCREEN);
+                height = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSCREEN);
+                x = 0;
+                y = 0;
+            }
 
             Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            bmp.SetResolution(96f, 96f);
             using (Graphics g = Graphics.FromImage(bmp))
             {
                 g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), CopyPixelOperation.SourceCopy);

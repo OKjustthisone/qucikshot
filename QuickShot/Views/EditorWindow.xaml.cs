@@ -65,8 +65,8 @@ namespace QuickShot.Views
             ScreenshotImage.Source = ScreenshotHelper.BitmapToBitmapSource(bitmap);
             EditorCanvas.Width = bitmap.Width;
             EditorCanvas.Height = bitmap.Height;
-            Width = Math.Min(bitmap.Width + 100, SystemParameters.PrimaryScreenWidth * 0.9);
-            Height = Math.Min(bitmap.Height + 260, SystemParameters.PrimaryScreenHeight * 0.9);
+            Width = Math.Min(bitmap.Width + 40, SystemParameters.PrimaryScreenWidth * 0.95);
+            Height = Math.Min(bitmap.Height + 120, SystemParameters.PrimaryScreenHeight * 0.95);
 
             _strokeColor = Color.FromArgb(255, 255, 107, 53);
             _fillAlpha = SettingsWindow.FillAlpha;
@@ -334,6 +334,10 @@ namespace QuickShot.Views
         {
             _selectedElement = null;
             SelectionAdorner.Visibility = Visibility.Collapsed;
+            if (FloatingPropertyPanel != null)
+            {
+                FloatingPropertyPanel.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void SelectElement(UIElement element)
@@ -342,41 +346,80 @@ namespace QuickShot.Views
             UpdateSelectionIndicator();
             SelectionAdorner.Visibility = Visibility.Visible;
 
-            var shape = element as Shape;
-            if (shape != null)
+            if (element is Rectangle || element is Ellipse)
             {
-                var strokeBrush = shape.Stroke as SolidColorBrush;
-                if (strokeBrush != null)
+                if (FloatingPropertyPanel != null)
                 {
-                    _strokeColor = strokeBrush.Color;
-                    ActiveColorBtn.Background = strokeBrush;
+                    FloatingPropertyPanel.Visibility = Visibility.Visible;
+                    StrokePropertyRow.Visibility = Visibility.Visible;
+                    FillPropertyRow.Visibility = Visibility.Visible;
                 }
-                _strokeThickness = shape.StrokeThickness;
-                ThicknessSlider.Value = _strokeThickness;
 
-                var fillBrush = shape.Fill as SolidColorBrush;
-                if (fillBrush != null)
+                var shape = element as Shape;
+                if (shape != null)
                 {
-                    if (fillBrush.Color == Colors.Transparent)
+                    var strokeBrush = shape.Stroke as SolidColorBrush;
+                    if (strokeBrush != null)
                     {
-                        _fillColor = Colors.Transparent;
-                        _fillAlpha = 0;
-                        FillAlphaSlider.Value = 0;
-                        ActiveFillBtn.Background = Brushes.Transparent;
-                        ActiveFillBtn.BorderBrush = new SolidColorBrush(Colors.Gray);
+                        _strokeColor = strokeBrush.Color;
+                        ActiveColorBtn.Background = strokeBrush;
                     }
-                    else
+                    _strokeThickness = shape.StrokeThickness;
+                    ThicknessSlider.Value = _strokeThickness;
+
+                    var fillBrush = shape.Fill as SolidColorBrush;
+                    if (fillBrush != null)
                     {
-                        _fillColor = fillBrush.Color;
-                        _fillAlpha = _fillColor.A;
-                        FillAlphaSlider.Value = _fillAlpha;
-                        ActiveFillBtn.Background = new SolidColorBrush(Color.FromRgb(_fillColor.R, _fillColor.G, _fillColor.B));
-                        ActiveFillBtn.BorderBrush = Brushes.White;
+                        if (fillBrush.Color == Colors.Transparent || fillBrush.Color.A == 0)
+                        {
+                            _fillColor = Colors.Transparent;
+                            _fillAlpha = 0;
+                            FillAlphaSlider.Value = 0;
+                            ActiveFillBtn.Background = Brushes.Transparent;
+                            ActiveFillBtn.BorderBrush = new SolidColorBrush(Colors.Gray);
+                        }
+                        else
+                        {
+                            _fillColor = fillBrush.Color;
+                            _fillAlpha = _fillColor.A;
+                            FillAlphaSlider.Value = _fillAlpha;
+                            ActiveFillBtn.Background = new SolidColorBrush(Color.FromRgb(_fillColor.R, _fillColor.G, _fillColor.B));
+                            ActiveFillBtn.BorderBrush = Brushes.White;
+                        }
                     }
                 }
             }
-            else
+            else if (element is Line || element is Path)
             {
+                if (FloatingPropertyPanel != null)
+                {
+                    FloatingPropertyPanel.Visibility = Visibility.Visible;
+                    StrokePropertyRow.Visibility = Visibility.Visible;
+                    FillPropertyRow.Visibility = Visibility.Collapsed;
+                }
+
+                var shape = element as Shape;
+                if (shape != null)
+                {
+                    var strokeBrush = shape.Stroke as SolidColorBrush;
+                    if (strokeBrush != null)
+                    {
+                        _strokeColor = strokeBrush.Color;
+                        ActiveColorBtn.Background = strokeBrush;
+                    }
+                    _strokeThickness = shape.StrokeThickness;
+                    ThicknessSlider.Value = _strokeThickness;
+                }
+            }
+            else if (element is TextBox)
+            {
+                if (FloatingPropertyPanel != null)
+                {
+                    FloatingPropertyPanel.Visibility = Visibility.Visible;
+                    StrokePropertyRow.Visibility = Visibility.Visible;
+                    FillPropertyRow.Visibility = Visibility.Collapsed;
+                }
+
                 var tb = element as TextBox;
                 if (tb != null)
                 {
@@ -386,6 +429,13 @@ namespace QuickShot.Views
                         _strokeColor = fgBrush.Color;
                         ActiveColorBtn.Background = fgBrush;
                     }
+                }
+            }
+            else
+            {
+                if (FloatingPropertyPanel != null)
+                {
+                    FloatingPropertyPanel.Visibility = Visibility.Collapsed;
                 }
             }
         }
@@ -838,6 +888,7 @@ namespace QuickShot.Views
             {
                 AttachElementEvents(_currentElement);
                 _annotations.Add(_currentElement);
+                SelectElement(_currentElement);
             }
             _currentElement = null;
         }
@@ -868,6 +919,12 @@ namespace QuickShot.Views
         {
             DeselectAll();
 
+            if (_annotations.Count == 0)
+            {
+                // Pure lossless screenshot with zero annotations
+                return new Bitmap(_originalBitmap);
+            }
+
             // Temporarily reset zoom to 1.0 to render pixel-perfect original resolution
             double originalScaleX = CanvasScaleTransform != null ? CanvasScaleTransform.ScaleX : 1.0;
             double originalScaleY = CanvasScaleTransform != null ? CanvasScaleTransform.ScaleY : 1.0;
@@ -875,16 +932,20 @@ namespace QuickShot.Views
             {
                 CanvasScaleTransform.ScaleX = 1.0;
                 CanvasScaleTransform.ScaleY = 1.0;
-                EditorCanvas.UpdateLayout();
             }
 
-            int width = (int)Math.Round(EditorCanvas.Width);
-            int height = (int)Math.Round(EditorCanvas.Height);
+            // Hide background image to render ONLY vector annotations onto a transparent layer
+            ScreenshotImage.Visibility = Visibility.Hidden;
+            if (FloatingPropertyPanel != null) FloatingPropertyPanel.Visibility = Visibility.Collapsed;
+            if (SelectionAdorner != null) SelectionAdorner.Visibility = Visibility.Collapsed;
+            EditorCanvas.UpdateLayout();
+
+            int width = _originalBitmap.Width;
+            int height = _originalBitmap.Height;
             if (width <= 0) width = 1;
             if (height <= 0) height = 1;
 
             var renderBitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-            
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
@@ -898,7 +959,8 @@ namespace QuickShot.Views
             }
             renderBitmap.Render(visual);
 
-            // Restore zoom scale
+            // Restore elements
+            ScreenshotImage.Visibility = Visibility.Visible;
             if (CanvasScaleTransform != null)
             {
                 CanvasScaleTransform.ScaleX = originalScaleX;
@@ -906,14 +968,26 @@ namespace QuickShot.Views
                 EditorCanvas.UpdateLayout();
             }
 
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(renderBitmap));
+            // Composite transparent annotation layer directly on top of lossless _originalBitmap
+            Bitmap finalBmp = new Bitmap(_originalBitmap);
             using (var stream = new MemoryStream())
             {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(renderBitmap));
                 encoder.Save(stream);
                 stream.Position = 0;
-                return new Bitmap(stream);
+                using (var annotationBmp = new Bitmap(stream))
+                {
+                    using (Graphics g = Graphics.FromImage(finalBmp))
+                    {
+                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        g.DrawImage(annotationBmp, 0, 0);
+                    }
+                }
             }
+
+            return finalBmp;
         }
 
         private void ShowSavedStatus(string prefix, string filePath)
