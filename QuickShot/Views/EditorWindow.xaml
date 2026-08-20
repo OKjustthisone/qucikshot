@@ -153,13 +153,16 @@
                 </StackPanel>
             </Border>
 
-            <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                          Background="#E2E2E2" Padding="20">
+            <ScrollViewer x:Name="EditorScrollViewer" Grid.Row="3" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          Background="#E2E2E2" Padding="20" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
                 <Canvas x:Name="EditorCanvas" Background="Transparent"
                         MouseDown="Canvas_MouseDown" MouseMove="Canvas_MouseMove" MouseUp="Canvas_MouseUp"
                         KeyDown="Canvas_KeyDown" Focusable="True"
                         Cursor="Cross">
-                    <Image x:Name="ScreenshotImage" Stretch="None"/>
+                    <Canvas.LayoutTransform>
+                        <ScaleTransform x:Name="CanvasScaleTransform" ScaleX="1.0" ScaleY="1.0"/>
+                    </Canvas.LayoutTransform>
+                    <Image x:Name="ScreenshotImage" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                     <!-- Selection Adorner Container -->
                     <Canvas x:Name="SelectionAdorner" Visibility="Collapsed" Panel.ZIndex="999" RenderTransformOrigin="0.5,0.5">
                         <Rectangle x:Name="SelectionIndicator" Stroke="#0067C0" StrokeThickness="1.5" Fill="Transparent"
@@ -186,8 +189,17 @@
             </ScrollViewer>
 
             <Border Grid.Row="4" Background="#EAEAEA" Height="32" CornerRadius="0,0,11,11">
-                <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextSecondary}" FontSize="11"
-                          VerticalAlignment="Center" Margin="12,0"/>
+                <Grid Margin="12,0">
+                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextSecondary}" FontSize="11"
+                              VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                    
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button x:Name="ZoomOutBtn" Content="-" Width="20" Height="20" Style="{StaticResource ToolButton}" Click="ZoomOut_Click" ToolTip="缩小 (滚轮向下)"/>
+                        <TextBlock x:Name="ZoomText" Text="100%" Foreground="{StaticResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="6,0" Cursor="Hand" MouseLeftButtonDown="ZoomReset_Click" ToolTip="点击恢复 100% (Ctrl+0)"/>
+                        <Button x:Name="ZoomInBtn" Content="+" Width="20" Height="20" Style="{StaticResource ToolButton}" Click="ZoomIn_Click" ToolTip="放大 (滚轮向上)"/>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Border>

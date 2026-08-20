@@ -53,6 +53,10 @@ namespace QuickShot.Views
         private Point _rotateCenter;
         private System.Windows.Threading.DispatcherTimer _autoCloseTimer;
         private DateTime _lastActivityTime;
+        private double _zoomFactor = 1.0;
+        private const double MIN_ZOOM = 0.1;
+        private const double MAX_ZOOM = 10.0;
+        private const double ZOOM_STEP = 1.15;
 
         public EditorWindow(Bitmap bitmap, string autoSavedPath = null)
         {
@@ -138,6 +142,12 @@ namespace QuickShot.Views
                 Close();
                 return;
             }
+            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && (e.Key == Key.D0 || e.Key == Key.NumPad0))
+            {
+                _zoomFactor = 1.0;
+                ApplyZoom();
+                return;
+            }
             if (e.Key == Key.Delete && _selectedElement != null)
             {
                 if (e.OriginalSource is TextBox) return;
@@ -146,6 +156,67 @@ namespace QuickShot.Views
                 DeselectAll();
                 StatusText.Text = "已删除";
             }
+        }
+
+        private void ApplyZoom()
+        {
+            if (CanvasScaleTransform != null)
+            {
+                CanvasScaleTransform.ScaleX = _zoomFactor;
+                CanvasScaleTransform.ScaleY = _zoomFactor;
+            }
+            if (ZoomText != null)
+            {
+                ZoomText.Text = string.Format("{0:0}%", _zoomFactor * 100);
+            }
+        }
+
+        private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            e.Handled = true;
+            _lastActivityTime = DateTime.Now;
+
+            Point mousePosOnCanvas = e.GetPosition(EditorCanvas);
+            Point mousePosOnScrollViewer = e.GetPosition(EditorScrollViewer);
+
+            double oldZoom = _zoomFactor;
+            if (e.Delta > 0)
+            {
+                _zoomFactor = Math.Min(MAX_ZOOM, _zoomFactor * ZOOM_STEP);
+            }
+            else if (e.Delta < 0)
+            {
+                _zoomFactor = Math.Max(MIN_ZOOM, _zoomFactor / ZOOM_STEP);
+            }
+
+            if (Math.Abs(_zoomFactor - oldZoom) > 0.001)
+            {
+                ApplyZoom();
+
+                EditorScrollViewer.UpdateLayout();
+                double newScrollX = mousePosOnCanvas.X * _zoomFactor - mousePosOnScrollViewer.X + EditorScrollViewer.Padding.Left;
+                double newScrollY = mousePosOnCanvas.Y * _zoomFactor - mousePosOnScrollViewer.Y + EditorScrollViewer.Padding.Top;
+                EditorScrollViewer.ScrollToHorizontalOffset(newScrollX);
+                EditorScrollViewer.ScrollToVerticalOffset(newScrollY);
+            }
+        }
+
+        private void ZoomIn_Click(object sender, RoutedEventArgs e)
+        {
+            _zoomFactor = Math.Min(MAX_ZOOM, _zoomFactor * ZOOM_STEP);
+            ApplyZoom();
+        }
+
+        private void ZoomOut_Click(object sender, RoutedEventArgs e)
+        {
+            _zoomFactor = Math.Max(MIN_ZOOM, _zoomFactor / ZOOM_STEP);
+            ApplyZoom();
+        }
+
+        private void ZoomReset_Click(object sender, MouseButtonEventArgs e)
+        {
+            _zoomFactor = 1.0;
+            ApplyZoom();
         }
 
         private void Tool_Click(object sender, RoutedEventArgs e)
@@ -796,6 +867,17 @@ namespace QuickShot.Views
         private Bitmap GetFinalBitmap()
         {
             DeselectAll();
+
+            // Temporarily reset zoom to 1.0 to render pixel-perfect original resolution
+            double originalScaleX = CanvasScaleTransform != null ? CanvasScaleTransform.ScaleX : 1.0;
+            double originalScaleY = CanvasScaleTransform != null ? CanvasScaleTransform.ScaleY : 1.0;
+            if (CanvasScaleTransform != null)
+            {
+                CanvasScaleTransform.ScaleX = 1.0;
+                CanvasScaleTransform.ScaleY = 1.0;
+                EditorCanvas.UpdateLayout();
+            }
+
             int width = (int)Math.Round(EditorCanvas.Width);
             int height = (int)Math.Round(EditorCanvas.Height);
             if (width <= 0) width = 1;
@@ -815,6 +897,14 @@ namespace QuickShot.Views
                 dc.DrawRectangle(brush, null, new Rect(0, 0, width, height));
             }
             renderBitmap.Render(visual);
+
+            // Restore zoom scale
+            if (CanvasScaleTransform != null)
+            {
+                CanvasScaleTransform.ScaleX = originalScaleX;
+                CanvasScaleTransform.ScaleY = originalScaleY;
+                EditorCanvas.UpdateLayout();
+            }
 
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(renderBitmap));
