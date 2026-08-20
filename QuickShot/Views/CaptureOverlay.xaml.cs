@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -41,36 +42,62 @@ namespace QuickShot.Views
             KeyDown += OnKeyDown;
         }
 
-        public CaptureOverlay(Bitmap preCapturedBitmap) : this()
+        public CaptureOverlay(Bitmap preCapturedBitmap = null) : this()
         {
             _preCapturedBitmap = preCapturedBitmap;
-            _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureScreen();
 
-            _virtLeft = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
-            _virtTop = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+            // Identify the monitor containing the mouse cursor
+            NativeMethods.POINT cursorPt;
+            NativeMethods.GetCursorPos(out cursorPt);
+            IntPtr hMon = NativeMethods.MonitorFromPoint(cursorPt, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var mi = new NativeMethods.MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+            NativeMethods.GetMonitorInfo(hMon, ref mi);
 
-            double sw = SystemParameters.VirtualScreenWidth;
-            double sh = SystemParameters.VirtualScreenHeight;
-            double sl = SystemParameters.VirtualScreenLeft;
-            double st = SystemParameters.VirtualScreenTop;
+            uint dpiX = 96, dpiY = 96;
+            try
+            {
+                NativeMethods.GetDpiForMonitor(hMon, 0, out dpiX, out dpiY);
+            }
+            catch
+            {
+                dpiX = 96;
+                dpiY = 96;
+            }
+            if (dpiX == 0) dpiX = 96;
+            if (dpiY == 0) dpiY = 96;
 
-            Left = sl;
-            Top = st;
-            Width = sw;
-            Height = sh;
+            _virtLeft = mi.rcMonitor.Left;
+            _virtTop = mi.rcMonitor.Top;
+            int monitorPhysicalW = mi.rcMonitor.Right - mi.rcMonitor.Left;
+            int monitorPhysicalH = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
 
-            // Calculate precise scaling ratio between WPF DIPs and physical pixels
-            _scaleX = (double)_screenBitmap.Width / sw;
-            _scaleY = (double)_screenBitmap.Height / sh;
+            double dpiScaleX = (double)dpiX / 96.0;
+            double dpiScaleY = (double)dpiY / 96.0;
+
+            _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureRegion(_virtLeft, _virtTop, monitorPhysicalW, monitorPhysicalH);
+
+            double winLeft = _virtLeft / dpiScaleX;
+            double winTop = _virtTop / dpiScaleY;
+            double winW = monitorPhysicalW / dpiScaleX;
+            double winH = monitorPhysicalH / dpiScaleY;
+
+            Left = winLeft;
+            Top = winTop;
+            Width = winW;
+            Height = winH;
+
+            _scaleX = (double)_screenBitmap.Width / winW;
+            _scaleY = (double)_screenBitmap.Height / winH;
 
             ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
-            ScreenImage.Width = sw;
-            ScreenImage.Height = sh;
+            ScreenImage.Width = winW;
+            ScreenImage.Height = winH;
 
-            DimmerTop.Width = sw; DimmerTop.Height = sh;
-            DimmerBottom.Width = sw; DimmerBottom.Height = sh;
-            DimmerLeft.Width = sw; DimmerLeft.Height = sh;
-            DimmerRight.Width = sw; DimmerRight.Height = sh;
+            DimmerTop.Width = winW; DimmerTop.Height = winH;
+            DimmerBottom.Width = winW; DimmerBottom.Height = winH;
+            DimmerLeft.Width = winW; DimmerLeft.Height = winH;
+            DimmerRight.Width = winW; DimmerRight.Height = winH;
 
             HideAllDimmer();
 
@@ -89,8 +116,8 @@ namespace QuickShot.Views
 
         private void UpdateDimmer(double x, double y, double w, double h)
         {
-            double sw = SystemParameters.VirtualScreenWidth;
-            double sh = SystemParameters.VirtualScreenHeight;
+            double sw = Width;
+            double sh = Height;
 
             DimmerTop.Visibility = Visibility.Visible;
             Canvas.SetLeft(DimmerTop, 0);

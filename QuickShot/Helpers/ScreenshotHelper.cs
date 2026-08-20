@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -10,6 +11,25 @@ namespace QuickShot.Helpers
 {
     public static class ScreenshotHelper
     {
+        public static Bitmap CaptureCurrentScreen()
+        {
+            NativeMethods.POINT pt;
+            NativeMethods.GetCursorPos(out pt);
+            IntPtr hMon = NativeMethods.MonitorFromPoint(pt, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var mi = new NativeMethods.MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+            if (NativeMethods.GetMonitorInfo(hMon, ref mi))
+            {
+                int x = mi.rcMonitor.Left;
+                int y = mi.rcMonitor.Top;
+                int width = mi.rcMonitor.Right - mi.rcMonitor.Left;
+                int height = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+
+                return CaptureRegion(x, y, width, height);
+            }
+            return CaptureScreen();
+        }
+
         public static Bitmap CaptureScreen()
         {
             int x = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
