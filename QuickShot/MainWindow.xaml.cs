@@ -322,8 +322,9 @@ namespace QuickShot
         {
             Hide();
             await Task.Delay(50);
+            Bitmap bmp = ScreenshotHelper.CaptureScreen();
 
-            var overlay = new CaptureOverlay();
+            var overlay = new CaptureOverlay(bmp);
             overlay.Captured += (s, capBmp) =>
             {
                 if (capBmp != null)

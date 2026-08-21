@@ -81,10 +81,41 @@ namespace QuickShot.Helpers
 
         public static Bitmap CaptureWindow(IntPtr hWnd)
         {
-            NativeMethods.RECT rect;
-            if (!NativeMethods.GetWindowRect(hWnd, out rect))
-                return null;
-            return CaptureRegion(rect.Left, rect.Top, rect.Width, rect.Height);
+            NativeMethods.RECT rect = NativeMethods.GetDwmWindowRect(hWnd);
+            if (rect.Width <= 0 || rect.Height <= 0)
+            {
+                if (!NativeMethods.GetWindowRect(hWnd, out rect))
+                    return null;
+            }
+
+            int x = rect.Left;
+            int y = rect.Top;
+            int w = rect.Width;
+            int h = rect.Height;
+
+            IntPtr hMon = NativeMethods.MonitorFromWindow(hWnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var mi = new NativeMethods.MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+            if (NativeMethods.GetMonitorInfo(hMon, ref mi))
+            {
+                if (x <= mi.rcMonitor.Left && x + w >= mi.rcMonitor.Right)
+                {
+                    x = mi.rcWork.Left;
+                    y = mi.rcWork.Top;
+                    w = mi.rcWork.Width;
+                    h = mi.rcWork.Height;
+                }
+                else
+                {
+                    if (x < mi.rcMonitor.Left) { w += (x - mi.rcMonitor.Left); x = mi.rcMonitor.Left; }
+                    if (y < mi.rcMonitor.Top) { h += (y - mi.rcMonitor.Top); y = mi.rcMonitor.Top; }
+                    if (x + w > mi.rcMonitor.Right) w = mi.rcMonitor.Right - x;
+                    if (y + h > mi.rcMonitor.Bottom) h = mi.rcMonitor.Bottom - y;
+                }
+            }
+
+            if (w <= 0 || h <= 0) return null;
+            return CaptureRegion(x, y, w, h);
         }
 
         public static BitmapSource BitmapToBitmapSource(Bitmap bitmap)

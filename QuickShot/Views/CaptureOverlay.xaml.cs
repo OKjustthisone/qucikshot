@@ -45,59 +45,33 @@ namespace QuickShot.Views
         public CaptureOverlay(Bitmap preCapturedBitmap = null) : this()
         {
             _preCapturedBitmap = preCapturedBitmap;
+            _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureScreen();
 
-            // Identify the monitor containing the mouse cursor
-            NativeMethods.POINT cursorPt;
-            NativeMethods.GetCursorPos(out cursorPt);
-            IntPtr hMon = NativeMethods.MonitorFromPoint(cursorPt, NativeMethods.MONITOR_DEFAULTTONEAREST);
-            var mi = new NativeMethods.MONITORINFOEX();
-            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
-            NativeMethods.GetMonitorInfo(hMon, ref mi);
+            _virtLeft = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+            _virtTop = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
 
-            uint dpiX = 96, dpiY = 96;
-            try
-            {
-                NativeMethods.GetDpiForMonitor(hMon, 0, out dpiX, out dpiY);
-            }
-            catch
-            {
-                dpiX = 96;
-                dpiY = 96;
-            }
-            if (dpiX == 0) dpiX = 96;
-            if (dpiY == 0) dpiY = 96;
+            double sw = SystemParameters.VirtualScreenWidth;
+            double sh = SystemParameters.VirtualScreenHeight;
+            double sl = SystemParameters.VirtualScreenLeft;
+            double st = SystemParameters.VirtualScreenTop;
 
-            _virtLeft = mi.rcMonitor.Left;
-            _virtTop = mi.rcMonitor.Top;
-            int monitorPhysicalW = mi.rcMonitor.Right - mi.rcMonitor.Left;
-            int monitorPhysicalH = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+            Left = sl;
+            Top = st;
+            Width = sw;
+            Height = sh;
 
-            double dpiScaleX = (double)dpiX / 96.0;
-            double dpiScaleY = (double)dpiY / 96.0;
-
-            _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureRegion(_virtLeft, _virtTop, monitorPhysicalW, monitorPhysicalH);
-
-            double winLeft = _virtLeft / dpiScaleX;
-            double winTop = _virtTop / dpiScaleY;
-            double winW = monitorPhysicalW / dpiScaleX;
-            double winH = monitorPhysicalH / dpiScaleY;
-
-            Left = winLeft;
-            Top = winTop;
-            Width = winW;
-            Height = winH;
-
-            _scaleX = (double)_screenBitmap.Width / winW;
-            _scaleY = (double)_screenBitmap.Height / winH;
+            // Calculate precise scaling ratio between WPF DIPs and physical pixels
+            _scaleX = (double)_screenBitmap.Width / sw;
+            _scaleY = (double)_screenBitmap.Height / sh;
 
             ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
-            ScreenImage.Width = winW;
-            ScreenImage.Height = winH;
+            ScreenImage.Width = sw;
+            ScreenImage.Height = sh;
 
-            DimmerTop.Width = winW; DimmerTop.Height = winH;
-            DimmerBottom.Width = winW; DimmerBottom.Height = winH;
-            DimmerLeft.Width = winW; DimmerLeft.Height = winH;
-            DimmerRight.Width = winW; DimmerRight.Height = winH;
+            DimmerTop.Width = sw; DimmerTop.Height = sh;
+            DimmerBottom.Width = sw; DimmerBottom.Height = sh;
+            DimmerLeft.Width = sw; DimmerLeft.Height = sh;
+            DimmerRight.Width = sw; DimmerRight.Height = sh;
 
             HideAllDimmer();
 
@@ -299,10 +273,30 @@ namespace QuickShot.Views
                         {
                             _highlightedWindow = hWnd;
                             var rect = NativeMethods.GetDwmWindowRect(hWnd);
-                            double winLeft = (rect.Left - _virtLeft) / _scaleX;
-                            double winTop = (rect.Top - _virtTop) / _scaleY;
-                            double winWidth = rect.Width / _scaleX;
-                            double winHeight = rect.Height / _scaleY;
+
+                            int x = rect.Left;
+                            int y = rect.Top;
+                            int w = rect.Width;
+                            int h = rect.Height;
+
+                            IntPtr hMon = NativeMethods.MonitorFromWindow(hWnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                            var mi = new NativeMethods.MONITORINFOEX();
+                            mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+                            if (NativeMethods.GetMonitorInfo(hMon, ref mi))
+                            {
+                                if (x <= mi.rcMonitor.Left && x + w >= mi.rcMonitor.Right)
+                                {
+                                    x = mi.rcWork.Left;
+                                    y = mi.rcWork.Top;
+                                    w = mi.rcWork.Width;
+                                    h = mi.rcWork.Height;
+                                }
+                            }
+
+                            double winLeft = (x - _virtLeft) / _scaleX;
+                            double winTop = (y - _virtTop) / _scaleY;
+                            double winWidth = w / _scaleX;
+                            double winHeight = h / _scaleY;
 
                             Canvas.SetLeft(WindowHighlight, winLeft);
                             Canvas.SetTop(WindowHighlight, winTop);
@@ -352,6 +346,21 @@ namespace QuickShot.Views
                 int y = rect.Top;
                 int w = rect.Width;
                 int h = rect.Height;
+
+                IntPtr hMon = NativeMethods.MonitorFromWindow(_highlightedWindow, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                var mi = new NativeMethods.MONITORINFOEX();
+                mi.cbSize = Marshal.SizeOf(typeof(NativeMethods.MONITORINFOEX));
+                if (NativeMethods.GetMonitorInfo(hMon, ref mi))
+                {
+                    if (x <= mi.rcMonitor.Left && x + w >= mi.rcMonitor.Right)
+                    {
+                        x = mi.rcWork.Left;
+                        y = mi.rcWork.Top;
+                        w = mi.rcWork.Width;
+                        h = mi.rcWork.Height;
+                    }
+                }
+
                 if (w > 0 && h > 0)
                 {
                     int px = x - _virtLeft;
