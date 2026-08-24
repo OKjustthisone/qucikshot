@@ -144,33 +144,64 @@ namespace QuickShot.Helpers
         {
             if (string.IsNullOrEmpty(text)) return text;
 
-            var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            var result = new StringBuilder();
+            var rawLines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var cleanLines = new System.Collections.Generic.List<string>();
 
-            for (int i = 0; i < lines.Length; i++)
+            for (int i = 0; i < rawLines.Length; i++)
             {
-                string line = lines[i];
+                string line = rawLines[i];
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // 1. Numbered list bullet normalization: "5，" / "5 ．" -> "5. "
-                line = Regex.Replace(line, @"^(\s*\d+)[，、．,](\s*)", "$1. ");
+                // 1. Numbered list bullet normalization:
+                // "5，" / "5 ．" / "5、" / "5 " / "5. " -> "5. "
+                // Ensures the dot '.' after leading digits is never omitted
+                line = Regex.Replace(line, @"^(\s*\d+)[，、．,]?(\s*)", "$1. ");
+                // Avoid double dots like "5.. "
+                line = Regex.Replace(line, @"^(\s*\d+)\.\s*\.\s*", "$1. ");
 
-                // 2. Trailing punctuation on headings: e.g. "5. ... 预览窗," / "6. ... 联动," -> ":"
-                if (Regex.IsMatch(line, @"^\s*\d+\."))
-                {
-                    line = Regex.Replace(line, @"[，,]\s*$", "：");
-                }
-
-                // 3. Remove inline icon artifacts inside parentheses before English identifiers:
+                // 2. Remove inline icon artifacts inside parentheses before English identifiers:
                 // e.g. "（巴 EditorWindow）" or "(巴 EditorWindow)" -> "（EditorWindow）"
                 line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]\s+([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
                 line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
 
-                // 4. Remove isolated inline icon badge artifact right before UI elements / buttons / icons / menus:
+                // 3. Remove isolated inline icon badge artifact right before UI elements / buttons / icons / menus:
                 // e.g. "新增了 0 按钮" / "新增了0按钮" -> "新增了按钮"
                 line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
 
-                result.AppendLine(line);
+                cleanLines.Add(line);
+            }
+
+            // 4. Heading / Title colon recovery:
+            // If a line is a numbered heading (e.g. "5. 右下角 Fluent 结果预览窗" or "6. 编辑器工具栏联动")
+            // and ends with comma/fullwidth comma or has no trailing punctuation followed by a sub-item,
+            // recover the colon "："
+            for (int i = 0; i < cleanLines.Count; i++)
+            {
+                string current = cleanLines[i];
+                bool isHeading = Regex.IsMatch(current, @"^\s*\d+\.");
+
+                if (isHeading)
+                {
+                    // If it ends with comma or fullwidth comma, replace with colon
+                    if (Regex.IsMatch(current, @"[，,]\s*$"))
+                    {
+                        cleanLines[i] = Regex.Replace(current, @"[，,]\s*$", "：");
+                    }
+                    // If it doesn't end with punctuation and next line is a bullet/sub-item, restore trailing colon
+                    else if (i + 1 < cleanLines.Count && (cleanLines[i + 1].TrimStart().StartsWith("·") || cleanLines[i + 1].TrimStart().StartsWith("-") || cleanLines[i + 1].TrimStart().StartsWith("•")))
+                    {
+                        if (!Regex.IsMatch(current, @"[：:。！!？?]\s*$"))
+                        {
+                            cleanLines[i] = current.TrimEnd() + "：";
+                        }
+                    }
+                }
+            }
+
+            var result = new StringBuilder();
+            foreach (var l in cleanLines)
+            {
+                result.AppendLine(l);
             }
 
             return result.ToString().TrimEnd();
