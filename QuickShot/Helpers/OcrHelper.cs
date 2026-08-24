@@ -168,9 +168,8 @@ namespace QuickShot.Helpers
                 // e.g. "新增了 0 按钮" / "新增了0按钮" -> "新增了按钮"
                 line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
 
-                // 4. Disambiguate '0' (zero) and 'O' (letter O) in identifiers, words, and numbers
-                // e.g. "Windows.media.0cr.0crEngine" -> "Windows.media.Ocr.OcrEngine", "1O0%" -> "100%"
-                line = FixOandZero(line);
+                // 4. Disambiguate '0' (zero) and 'O' (letter O), '1' (one), 'l' (el), 'I' (eye) in words, acronyms, and numbers
+                line = DisambiguateCharacters(line);
 
                 cleanLines.Add(line);
             }
@@ -209,6 +208,34 @@ namespace QuickShot.Helpers
             }
 
             return result.ToString().TrimEnd();
+        }
+
+        private static string DisambiguateCharacters(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // 1. Fix letter 'O'/'o' inside numbers and '0' in words
+            text = FixOandZero(text);
+
+            // 2. Fix '1', 'l', 'I' inside numeric contexts
+            text = FixNumericLAndI(text);
+
+            // 3. Fix acronyms (e.g. "Ul" -> "UI", "lD" -> "ID", "lP" -> "IP", "HTMI" -> "HTML", "APl" -> "API")
+            text = FixAcronyms(text);
+
+            // 4. Fix capitalized English words starting with 'l' or '1' where phonotactics require 'I' (Image, Index, Info, Item, Icon, Idea, Is, It, In)
+            text = FixLeadingIWords(text);
+
+            // 5. Fix words starting with '1' where 'l' or 'L' is required (e.g. "1ook" -> "look", "1ine" -> "line", "1ocal" -> "local")
+            text = FixLeadingLWords(text);
+
+            // 6. Fix digit '1' embedded inside lowercase English words (e.g. "c1ass" -> "class", "c1ick" -> "click", "defau1t" -> "default")
+            text = FixEmbeddedOne(text);
+
+            // 7. Fix capital 'I' embedded inside lowercase English words (e.g. "cIass" -> "class", "faiI" -> "fail", "bIur" -> "blur", "heIIo" -> "hello")
+            text = FixEmbeddedCapitalI(text);
+
+            return text;
         }
 
         private static string FixOandZero(string text)
@@ -262,6 +289,85 @@ namespace QuickShot.Helpers
                 return "o";
             });
 
+            return text;
+        }
+
+        private static string FixNumericLAndI(string text)
+        {
+            // 'l' or 'I' flanked by digits (e.g. "2l0" -> "210")
+            text = Regex.Replace(text, @"(?<=\d)[lI|](?=\d)", "1");
+            // In IP addresses or decimals: "192.168.l.1" -> "192.168.1.1", "3.l4" -> "3.14"
+            text = Regex.Replace(text, @"(?<=\d\.)[lI|](?=\.\d|\d|\b)", "1");
+            text = Regex.Replace(text, @"(?<=\b\d+)[lI|](?=\.\d+)", "1");
+            // Flanked by digit on left and units/symbols on right (e.g. "202l年", "202l-", "l00%")
+            text = Regex.Replace(text, @"(?<=\d)[lI|](?=[%％年号月日点分秒\.,:;\s]|$)", "1");
+            // Flanked by start/punctuation and digit (e.g. "l00%", "l2:30", "第 l 步")
+            text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/第])[lI|](?=\d+)", "1");
+            text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/第])[lI|](?=[%％])", "1");
+            text = Regex.Replace(text, @"(?<=第\s*)[lI|](?=\s*步|\s*个|\s*章|\s*节|\s*条|\s*项|\s*次|\s*页)", "1");
+
+            return text;
+        }
+
+        private static string FixAcronyms(string text)
+        {
+            // Acronyms where 'l' or '1' is mistaken for 'I':
+            text = Regex.Replace(text, @"\bU[l1]\b", "UI");
+            text = Regex.Replace(text, @"\b[l1]D\b", "ID");
+            text = Regex.Replace(text, @"\b[l1]P\b", "IP");
+            text = Regex.Replace(text, @"\b[l1]O\b", "IO");
+            text = Regex.Replace(text, @"\bAP[l1]\b", "API");
+            text = Regex.Replace(text, @"\bGU[l1]\b", "GUI");
+            text = Regex.Replace(text, @"\bCU[l1]\b", "CUI");
+            text = Regex.Replace(text, @"\bCL[l1]\b", "CLI");
+            text = Regex.Replace(text, @"\bA[l1]\s+(模型|技术|算法|时代|应用|智能|助手|工具|生成|芯片|算力|Prompt|Agent|model|tool|app)", "AI $1", RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"\b(生成式|通用|强|弱)\s*A[l1]\b", "$1 AI");
+
+            text = Regex.Replace(text, @"\bHTM[Il1]\b", "HTML");
+            text = Regex.Replace(text, @"\bXM[Il1]\b", "XML");
+            text = Regex.Replace(text, @"\bUR[Il1]\b", "URL");
+
+            return text;
+        }
+
+        private static string FixLeadingIWords(string text)
+        {
+            // In English phonotactics, no English word begins with lowercase 'l' followed by consonants:
+            // "lm..." -> "Im..." (Image, Import, Implicit, Impact, Immense, Immunity, ...)
+            // "ln..." -> "In..." (Index, Info, Input, Include, Inside, Install, Init, Instance, ...)
+            // "lt..." -> "It..." (Item, Iterate, Italic, ...)
+            // "lc..." -> "Ic..." (Icon, Ice, ...)
+            // "ld..." -> "Id..." (Idea, Identify, Idle, Idol, ...)
+            // "ls..." -> "Is..." (Is, Issue, Island, ...)
+            // "lg..." -> "Ig..." (Ignore, Ignite, ...)
+            text = Regex.Replace(text, @"\b[l1]([mnctdsg][a-zA-Z]*)", "I$1");
+            return text;
+        }
+
+        private static string FixLeadingLWords(string text)
+        {
+            // Words starting with '1' followed by vowels / common L-initial consonants:
+            // "1ook" -> "look", "1ine" -> "line", "1evel" -> "level", "1ist" -> "list",
+            // "1og" -> "log", "1oad" -> "load", "1ink" -> "link", "1ayout" -> "layout",
+            // "1ight" -> "light", "1ast" -> "last", "1ocal" -> "local", "1ock" -> "lock"
+            text = Regex.Replace(text, @"\b1([aAeEiIoOuUyYrR][a-zA-Z]*)", "l$1");
+            return text;
+        }
+
+        private static string FixEmbeddedOne(string text)
+        {
+            // Digit '1' inside a word flanked by letters:
+            // e.g. "c1ass" -> "class", "c1ick" -> "click", "defau1t" -> "default", "uti1s" -> "utils"
+            text = Regex.Replace(text, @"(?<=[a-zA-Z])1(?=[a-zA-Z])", "l");
+            return text;
+        }
+
+        private static string FixEmbeddedCapitalI(string text)
+        {
+            // Capital 'I' inside lowercase word flanked by lowercase letters:
+            // e.g. "cIass" -> "class", "cIick" -> "click", "faiI" -> "fail", "utiIs" -> "utils", "bIur" -> "blur"
+            text = Regex.Replace(text, @"(?<=[a-z])I+(?=[a-z])", m => new string('l', m.Length));
+            text = Regex.Replace(text, @"(?<=[a-z]{2,})I+(?=[^a-zA-Z0-9]|$)", m => new string('l', m.Length));
             return text;
         }
 
