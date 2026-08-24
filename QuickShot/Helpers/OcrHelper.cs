@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Globalization;
@@ -139,6 +140,42 @@ namespace QuickShot.Helpers
             return sb.ToString();
         }
 
+        private static string PostProcessText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var result = new StringBuilder();
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                // 1. Numbered list bullet normalization: "5，" / "5 ．" -> "5. "
+                line = Regex.Replace(line, @"^(\s*\d+)[，、．,](\s*)", "$1. ");
+
+                // 2. Trailing punctuation on headings: e.g. "5. ... 预览窗," / "6. ... 联动," -> ":"
+                if (Regex.IsMatch(line, @"^\s*\d+\."))
+                {
+                    line = Regex.Replace(line, @"[，,]\s*$", "：");
+                }
+
+                // 3. Remove inline icon artifacts inside parentheses before English identifiers:
+                // e.g. "（巴 EditorWindow）" or "(巴 EditorWindow)" -> "（EditorWindow）"
+                line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]\s+([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
+                line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
+
+                // 4. Remove isolated inline icon badge artifact right before UI elements / buttons / icons / menus:
+                // e.g. "新增了 0 按钮" / "新增了0按钮" -> "新增了按钮"
+                line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
+
+                result.AppendLine(line);
+            }
+
+            return result.ToString().TrimEnd();
+        }
+
         private static Bitmap PreprocessBitmap(Bitmap src)
         {
             // Dynamic scale factor: small screen fonts (12-14px) are upscaled 2x using HighQualityBicubic
@@ -263,7 +300,8 @@ namespace QuickShot.Helpers
                     }
                 }
 
-                return sb.ToString().TrimEnd();
+                string rawResult = sb.ToString().TrimEnd();
+                return PostProcessText(rawResult);
             }
             catch (Exception ex)
             {
