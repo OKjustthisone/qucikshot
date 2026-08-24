@@ -27,6 +27,9 @@ namespace QuickShot.Views
         private static ModifierKeys _hotkeyFullModifiers = ModifierKeys.Control | ModifierKeys.Alt;
         private static Key _hotkeyFullKey = Key.F;
 
+        private static ModifierKeys _hotkeyOcrModifiers = ModifierKeys.None;
+        private static Key _hotkeyOcrKey = Key.F4;
+
         public static bool AutoCopy { get { return _autoCopy; } set { _autoCopy = value; } }
         public static bool AutoSave { get { return _autoSave; } set { _autoSave = value; } }
         public static int MosaicSize { get { return _mosaicSize; } set { _mosaicSize = value; } }
@@ -43,6 +46,9 @@ namespace QuickShot.Views
         public static ModifierKeys HotkeyFullModifiers { get { return _hotkeyFullModifiers; } set { _hotkeyFullModifiers = value; } }
         public static Key HotkeyFullKey { get { return _hotkeyFullKey; } set { _hotkeyFullKey = value; } }
 
+        public static ModifierKeys HotkeyOcrModifiers { get { return _hotkeyOcrModifiers; } set { _hotkeyOcrModifiers = value; } }
+        public static Key HotkeyOcrKey { get { return _hotkeyOcrKey; } set { _hotkeyOcrKey = value; } }
+
         private ModifierKeys _tempRegionModifiers;
         private Key _tempRegionKey;
 
@@ -51,6 +57,9 @@ namespace QuickShot.Views
 
         private ModifierKeys _tempFullModifiers;
         private Key _tempFullKey;
+
+        private ModifierKeys _tempOcrModifiers;
+        private Key _tempOcrKey;
 
         public SettingsWindow()
         {
@@ -72,6 +81,9 @@ namespace QuickShot.Views
 
             _tempFullModifiers = HotkeyFullModifiers;
             _tempFullKey = HotkeyFullKey;
+
+            _tempOcrModifiers = HotkeyOcrModifiers;
+            _tempOcrKey = HotkeyOcrKey;
 
             UpdateHotkeyTextBoxDisplays();
         }
@@ -132,6 +144,9 @@ namespace QuickShot.Views
             HotkeyFullModifiers = _tempFullModifiers;
             HotkeyFullKey = _tempFullKey;
 
+            HotkeyOcrModifiers = _tempOcrModifiers;
+            HotkeyOcrKey = _tempOcrKey;
+
             StartWithWindows = StartWithWindowsCheck.IsChecked == true;
 
             SaveSettings();
@@ -190,6 +205,11 @@ namespace QuickShot.Views
                 _tempFullModifiers = targetModifiers;
                 _tempFullKey = targetKey;
             }
+            else if (tb.Name == "HotkeyOcrBox")
+            {
+                _tempOcrModifiers = targetModifiers;
+                _tempOcrKey = targetKey;
+            }
 
             UpdateHotkeyTextBoxDisplays();
         }
@@ -199,6 +219,7 @@ namespace QuickShot.Views
             HotkeyRegionBox.Text = FormatHotkeyText(_tempRegionModifiers, _tempRegionKey);
             HotkeyWindowBox.Text = FormatHotkeyText(_tempWindowModifiers, _tempWindowKey);
             HotkeyFullBox.Text = FormatHotkeyText(_tempFullModifiers, _tempFullKey);
+            HotkeyOcrBox.Text = FormatHotkeyText(_tempOcrModifiers, _tempOcrKey);
         }
 
         private string FormatHotkeyText(ModifierKeys modifiers, Key key)
@@ -236,6 +257,8 @@ namespace QuickShot.Views
                 HotkeyWindowKey = Key.W;
                 HotkeyFullModifiers = ModifierKeys.Control | ModifierKeys.Alt;
                 HotkeyFullKey = Key.F;
+                HotkeyOcrModifiers = ModifierKeys.None;
+                HotkeyOcrKey = Key.F4;
 
                 if (File.Exists(path))
                 {
@@ -285,6 +308,12 @@ namespace QuickShot.Views
                             case "HotkeyFullKey":
                                 HotkeyFullKey = (Key)Enum.Parse(typeof(Key), val);
                                 break;
+                            case "HotkeyOcrModifiers":
+                                HotkeyOcrModifiers = (ModifierKeys)Enum.Parse(typeof(ModifierKeys), val);
+                                break;
+                            case "HotkeyOcrKey":
+                                HotkeyOcrKey = (Key)Enum.Parse(typeof(Key), val);
+                                break;
                             case "StartWithWindows":
                                 StartWithWindows = bool.Parse(val);
                                 break;
@@ -325,6 +354,8 @@ namespace QuickShot.Views
                     sw.WriteLine("HotkeyWindowKey=" + HotkeyWindowKey.ToString());
                     sw.WriteLine("HotkeyFullModifiers=" + HotkeyFullModifiers.ToString());
                     sw.WriteLine("HotkeyFullKey=" + HotkeyFullKey.ToString());
+                    sw.WriteLine("HotkeyOcrModifiers=" + HotkeyOcrModifiers.ToString());
+                    sw.WriteLine("HotkeyOcrKey=" + HotkeyOcrKey.ToString());
                     sw.WriteLine("StartWithWindows=" + StartWithWindows.ToString());
                 }
 

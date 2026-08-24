@@ -104,6 +104,7 @@
                         <Button Content="&#x1F4CB;" Style="{StaticResource ToolButton}" Click="Copy_Click" ToolTip="复制" Width="32" Height="32"/>
                         <Button Content="&#x1F4BE;" Style="{StaticResource ToolButton}" Click="Save_Click" MouseRightButtonUp="Save_MouseRightButtonUp" ToolTip="左键：自动保存到默认路径；右键：另存为..." Width="32" Height="32"/>
                         <Button Content="&#x1F4CC;" Style="{StaticResource ToolButton}" Click="Pin_Click" ToolTip="贴图" Width="32" Height="32"/>
+                        <Button Content="🔤" Style="{StaticResource ToolButton}" Click="Ocr_Click" ToolTip="文字识别 (OCR)" Width="32" Height="32"/>
                         <Rectangle Width="1" Fill="#D6D6D6" Margin="8,6"/>
                         <Button Content="&#x2699;" Style="{StaticResource ToolButton}" Click="Settings_Click" ToolTip="设置" Width="32" Height="32"/>
                     </StackPanel>

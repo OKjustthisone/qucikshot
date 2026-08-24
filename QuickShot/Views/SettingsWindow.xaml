@@ -74,6 +74,12 @@
                             <TextBox x:Name="HotkeyFullBox" Background="#FFFFFF" Foreground="{StaticResource TextPrimary}"
                                      BorderThickness="1" BorderBrush="#D1D1D1" Padding="10,6" FontSize="13" Height="32"
                                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                     IsReadOnly="True" Cursor="Hand" PreviewKeyDown="HotkeyBox_PreviewKeyDown" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="OCR 文字识别快捷键" Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,2,0,2"/>
+                            <TextBox x:Name="HotkeyOcrBox" Background="#FFFFFF" Foreground="{StaticResource TextPrimary}"
+                                     BorderThickness="1" BorderBrush="#D1D1D1" Padding="10,6" FontSize="13" Height="32"
+                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                      IsReadOnly="True" Cursor="Hand" PreviewKeyDown="HotkeyBox_PreviewKeyDown"/>
                             
                             <TextBlock Text="提示：选中输入框，直接在键盘上按下组合键即可设置。按 ESC 或 Backspace 可清除快捷键。" 

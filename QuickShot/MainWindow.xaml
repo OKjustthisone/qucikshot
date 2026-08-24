@@ -1,7 +1,7 @@
 <Window x:Class="QuickShot.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="QuickShot" Height="500" Width="400"
+        Title="QuickShot" Height="580" Width="400"
         Icon="icon.png"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -90,7 +90,7 @@
                     </Grid>
                 </Button>
 
-                <Button Height="56" Margin="0,0,0,24" Click="FullCapture_Click">
+                <Button Height="56" Margin="0,0,0,12" Click="FullCapture_Click">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ActionButton}">
                             <Setter Property="Background" Value="{StaticResource DarkSurface}"/>
@@ -112,6 +112,32 @@
                         <StackPanel Grid.Column="1">
                             <TextBlock Text="全屏截图" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"/>
                             <TextBlock Text="截取整个屏幕" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+
+                <Button Height="56" Margin="0,0,0,24" Click="OcrCapture_Click">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource ActionButton}">
+                            <Setter Property="Background" Value="{StaticResource DarkSurface}"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                            <Setter Property="Padding" Value="20,0"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#3D3D3D"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="🔤" FontSize="18" Margin="0,0,12,0"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="文字识别 (OCR)" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"/>
+                            <TextBlock Text="框选屏幕区域提取中英文并自动复制" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
                         </StackPanel>
                     </Grid>
                 </Button>
@@ -139,7 +165,7 @@
                                 <TextBlock x:Name="HotkeyWindowText" Text="Ctrl + Alt + W" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
                             </Border>
                         </Grid>
-                        <Grid>
+                        <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -147,6 +173,16 @@
                             <TextBlock Grid.Column="0" Text="全屏截图" Foreground="{StaticResource TextPrimary}" FontSize="13"/>
                             <Border Grid.Column="1" Background="{StaticResource DarkBg}" CornerRadius="4" Padding="8,4">
                                 <TextBlock x:Name="HotkeyFullText" Text="Ctrl + Alt + F" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
+                            </Border>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="文字识别" Foreground="{StaticResource TextPrimary}" FontSize="13"/>
+                            <Border Grid.Column="1" Background="{StaticResource DarkBg}" CornerRadius="4" Padding="8,4">
+                                <TextBlock x:Name="HotkeyOcrText" Text="F4" Foreground="{StaticResource TextSecondary}" FontSize="11"/>
                             </Border>
                         </Grid>
                     </StackPanel>

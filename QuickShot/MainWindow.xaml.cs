@@ -21,6 +21,7 @@ namespace QuickShot
         private const int HOTKEY_REGION_ID = 9000;
         private const int HOTKEY_WINDOW_ID = 9001;
         private const int HOTKEY_FULL_ID = 9002;
+        private const int HOTKEY_OCR_ID = 9003;
 
         private System.Windows.Forms.NotifyIcon _notifyIcon;
         private bool _isShuttingDown = false;
@@ -88,6 +89,7 @@ namespace QuickShot
                 var contextMenu = new System.Windows.Forms.ContextMenu();
                 contextMenu.MenuItems.Add("显示主界面", (s, e) => { Show(); WindowState = WindowState.Normal; Activate(); });
                 contextMenu.MenuItems.Add("区域截图", (s, e) => StartRegionCapture());
+                contextMenu.MenuItems.Add("文字识别 (OCR)", (s, e) => StartOcrCapture());
                 contextMenu.MenuItems.Add("设置", (s, e) => OpenSettings());
                 contextMenu.MenuItems.Add("关闭所有截图", (s, e) => CloseAllEditorWindows());
                 contextMenu.MenuItems.Add("-");
@@ -168,6 +170,11 @@ namespace QuickShot
                     FullCapture_Click(null, null);
                     handled = true;
                 }
+                else if (id == HOTKEY_OCR_ID)
+                {
+                    StartOcrCapture();
+                    handled = true;
+                }
             }
             return IntPtr.Zero;
         }
@@ -182,6 +189,7 @@ namespace QuickShot
                 NativeMethods.UnregisterHotKey(handle, HOTKEY_REGION_ID);
                 NativeMethods.UnregisterHotKey(handle, HOTKEY_WINDOW_ID);
                 NativeMethods.UnregisterHotKey(handle, HOTKEY_FULL_ID);
+                NativeMethods.UnregisterHotKey(handle, HOTKEY_OCR_ID);
 
                 // Region Hotkey
                 uint regMod = GetWin32Modifiers(SettingsWindow.HotkeyRegionModifiers);
@@ -206,6 +214,14 @@ namespace QuickShot
                 {
                     NativeMethods.RegisterHotKey(handle, HOTKEY_FULL_ID, fullMod, fullVk);
                 }
+
+                // OCR Hotkey
+                uint ocrMod = GetWin32Modifiers(SettingsWindow.HotkeyOcrModifiers);
+                uint ocrVk = (uint)KeyInterop.VirtualKeyFromKey(SettingsWindow.HotkeyOcrKey);
+                if (ocrVk != 0)
+                {
+                    NativeMethods.RegisterHotKey(handle, HOTKEY_OCR_ID, ocrMod, ocrVk);
+                }
             }
             catch { }
         }
@@ -220,6 +236,7 @@ namespace QuickShot
                     NativeMethods.UnregisterHotKey(handle, HOTKEY_REGION_ID);
                     NativeMethods.UnregisterHotKey(handle, HOTKEY_WINDOW_ID);
                     NativeMethods.UnregisterHotKey(handle, HOTKEY_FULL_ID);
+                    NativeMethods.UnregisterHotKey(handle, HOTKEY_OCR_ID);
                 }
             }
             catch { }
@@ -249,6 +266,8 @@ namespace QuickShot
                 HotkeyWindowText.Text = FormatHotkeyText(SettingsWindow.HotkeyWindowModifiers, SettingsWindow.HotkeyWindowKey);
             if (HotkeyFullText != null)
                 HotkeyFullText.Text = FormatHotkeyText(SettingsWindow.HotkeyFullModifiers, SettingsWindow.HotkeyFullKey);
+            if (HotkeyOcrText != null)
+                HotkeyOcrText.Text = FormatHotkeyText(SettingsWindow.HotkeyOcrModifiers, SettingsWindow.HotkeyOcrKey);
         }
 
         public static string FormatHotkeyText(ModifierKeys modifiers, Key key)
@@ -329,6 +348,50 @@ namespace QuickShot
             {
                 if (capBmp != null)
                     ShowEditor(capBmp);
+            };
+            overlay.Show();
+        }
+
+        private void OcrCapture_Click(object sender, RoutedEventArgs e)
+        {
+            StartOcrCapture();
+        }
+
+        public async void StartOcrCapture()
+        {
+            Hide();
+            await Task.Delay(50);
+            Bitmap bmp = ScreenshotHelper.CaptureScreen();
+
+            var overlay = new CaptureOverlay(bmp, isOcrMode: true);
+            overlay.Captured += async (s, capBmp) =>
+            {
+                if (capBmp != null)
+                {
+                    try
+                    {
+                        string text = await OcrHelper.RecognizeTextAsync(capBmp);
+                        if (string.IsNullOrEmpty(text))
+                        {
+                            text = "（未识别到文字）";
+                        }
+                        else
+                        {
+                            Clipboard.SetText(text);
+                        }
+
+                        var ocrWin = new OcrResultWindow(text);
+                        ocrWin.Show();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("OCR 识别失败: " + ex.Message, "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    finally
+                    {
+                        capBmp.Dispose();
+                    }
+                }
             };
             overlay.Show();
         }

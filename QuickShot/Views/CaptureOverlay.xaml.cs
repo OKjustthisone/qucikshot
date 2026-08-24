@@ -27,6 +27,7 @@ namespace QuickShot.Views
         private const int CLICK_THRESHOLD_MS = 250;
         private const int CLICK_THRESHOLD_PX = 5;
 
+        private bool _isOcrMode = false;
         private readonly Bitmap _preCapturedBitmap;
         private double _scaleX = 1.0;
         private double _scaleY = 1.0;
@@ -42,8 +43,9 @@ namespace QuickShot.Views
             KeyDown += OnKeyDown;
         }
 
-        public CaptureOverlay(Bitmap preCapturedBitmap = null) : this()
+        public CaptureOverlay(Bitmap preCapturedBitmap = null, bool isOcrMode = false) : this()
         {
+            _isOcrMode = isOcrMode;
             _preCapturedBitmap = preCapturedBitmap;
             _screenBitmap = preCapturedBitmap ?? ScreenshotHelper.CaptureScreen();
 
@@ -74,6 +76,11 @@ namespace QuickShot.Views
             DimmerRight.Width = sw; DimmerRight.Height = sh;
 
             HideAllDimmer();
+
+            if (_isOcrMode)
+            {
+                TipText.Text = "框选文字区域提取文本 / 单击选中窗口 / ESC 取消";
+            }
 
             MouseDown += OnMouseDown;
             MouseMove += OnMouseMove;
@@ -421,7 +428,10 @@ namespace QuickShot.Views
 
         private void FinishCapture(Bitmap bmp)
         {
-            ScreenshotHelper.SaveToClipboard(bmp);
+            if (!_isOcrMode)
+            {
+                ScreenshotHelper.SaveToClipboard(bmp);
+            }
             Close();
             if (Captured != null)
                 Captured(this, bmp);

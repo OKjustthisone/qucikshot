@@ -1078,6 +1078,34 @@ namespace QuickShot.Views
             StatusText.Text = "已贴图";
         }
 
+        private async void Ocr_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                StatusText.Text = "正在识别文字 (OCR)...";
+                var bmp = GetFinalBitmap();
+                string text = await OcrHelper.RecognizeTextAsync(bmp);
+                if (string.IsNullOrEmpty(text))
+                {
+                    StatusText.Text = "未识别到文字";
+                    text = "（未识别到文字）";
+                }
+                else
+                {
+                    Clipboard.SetText(text);
+                    StatusText.Text = "文字识别成功，已自动复制到剪贴板";
+                }
+
+                var ocrWin = new OcrResultWindow(text);
+                ocrWin.Show();
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "OCR 识别失败: " + ex.Message;
+                MessageBox.Show("OCR 识别失败: " + ex.Message, "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void Settings_Click(object sender, RoutedEventArgs e)
         {
             var settings = new SettingsWindow();
