@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -51,8 +53,19 @@ namespace QuickShot.Helpers
             return (c >= 0x4E00 && c <= 0x9FFF) || // CJK Unified Ideographs
                    (c >= 0x3400 && c <= 0x4DBF) || // CJK Extension A
                    (c >= 0xF900 && c <= 0xFAFF) || // CJK Compatibility
-                   (c >= 0x3000 && c <= 0x303F) || // CJK Symbols and Punctuation (，。！？等)
-                   (c >= 0xFF00 && c <= 0xFFEF);   // Halfwidth and Fullwidth Forms（中文括号等）
+                   (c >= 0x3000 && c <= 0x303F) || // CJK Symbols and Punctuation
+                   (c >= 0xFF00 && c <= 0xFFEF);   // Fullwidth Forms
+        }
+
+        private static int CountCjk(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0;
+            int count = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (IsCjk(s[i])) count++;
+            }
+            return count;
         }
 
         private static bool IsNoSpaceBefore(char c)
@@ -68,134 +81,216 @@ namespace QuickShot.Helpers
         {
             return c == '(' || c == '[' || c == '{' || c == '<' || c == '“' || c == '‘' ||
                    c == '（' || c == '【' || c == '《' || c == '/' || c == '\\' || c == '@' ||
-                   c == '#' || c == '$' || c == '￥';
+                   c == '#' || c == '$' || c == '￥' || c == '~';
         }
 
-        private static string CleanAndFormatLine(OcrLine line)
+        public class MergedLine
         {
-            if (line == null || line.Words == null || line.Words.Count == 0)
-                return string.Empty;
+            public double MinX { get; set; }
+            public double MaxX { get; set; }
+            public double MinY { get; set; }
+            public double MaxY { get; set; }
+            public double CenterY { get { return (MinY + MaxY) / 2.0; } }
+            public double Height { get { return MaxY - MinY; } }
+            public List<OcrWord> Words { get; set; }
 
-            var sb = new StringBuilder();
-            for (int i = 0; i < line.Words.Count; i++)
+            public MergedLine(OcrLine line)
             {
-                var word = line.Words[i].Text;
-                if (string.IsNullOrEmpty(word)) continue;
+                Words = new List<OcrWord>(line.Words);
+                MinX = Words.Min(w => w.BoundingRect.X);
+                MaxX = Words.Max(w => w.BoundingRect.X + w.BoundingRect.Width);
+                MinY = Words.Min(w => w.BoundingRect.Y);
+                MaxY = Words.Max(w => w.BoundingRect.Y + w.BoundingRect.Height);
+            }
 
-                if (i > 0 && sb.Length > 0)
+            public void Merge(MergedLine other)
+            {
+                Words.AddRange(other.Words);
+                Words = Words.OrderBy(w => w.BoundingRect.X).ToList();
+                MinX = Math.Min(MinX, other.MinX);
+                MaxX = Math.Max(MaxX, other.MaxX);
+                MinY = Math.Min(MinY, other.MinY);
+                MaxY = Math.Max(MaxY, other.MaxY);
+            }
+        }
+
+        private static List<MergedLine> SortAndMergeLines(IReadOnlyList<OcrLine> rawLines)
+        {
+            if (rawLines == null || rawLines.Count == 0) return new List<MergedLine>();
+
+            var lines = rawLines.Select(l => new MergedLine(l)).ToList();
+
+            // Merge lines that share the same horizontal row (e.g. superscripts [20], inline buttons, or right-side footnotes)
+            bool mergedAny = true;
+            while (mergedAny)
+            {
+                mergedAny = false;
+                for (int i = 0; i < lines.Count; i++)
                 {
-                    char prevChar = sb[sb.Length - 1];
-                    char nextChar = word[0];
+                    for (int j = i + 1; j < lines.Count; j++)
+                    {
+                        var a = lines[i];
+                        var b = lines[j];
 
-                    bool prevCjk = IsCjk(prevChar);
-                    bool nextCjk = IsCjk(nextChar);
+                        // Must NOT overlap horizontally
+                        bool horizontalSeparated = (a.MaxX <= b.MinX + 15) || (b.MaxX <= a.MinX + 15);
+                        if (!horizontalSeparated) continue;
 
-                    bool shouldAddSpace = false;
+                        // Vertical overlap test
+                        double top = Math.Max(a.MinY, b.MinY);
+                        double bottom = Math.Min(a.MaxY, b.MaxY);
+                        double overlap = bottom - top;
+                        double minH = Math.Min(a.Height, b.Height);
 
-                    if (IsNoSpaceAfter(prevChar) || IsNoSpaceBefore(nextChar))
-                    {
-                        shouldAddSpace = false;
-                    }
-                    else if (!prevCjk && !nextCjk)
-                    {
-                        // Both Latin/digits (e.g. "Hello" and "World") -> keep space
-                        if (char.IsLetterOrDigit(prevChar) && char.IsLetterOrDigit(nextChar))
+                        if (overlap > 0 && (overlap / minH >= 0.3 || Math.Abs(a.CenterY - b.CenterY) <= 15))
                         {
-                            shouldAddSpace = true;
+                            a.Merge(b);
+                            lines.RemoveAt(j);
+                            mergedAny = true;
+                            break;
                         }
                     }
-                    else if (!prevCjk && nextCjk)
-                    {
-                        // English word followed by Chinese -> keep 1 space (e.g. "Fluent 结果")
-                        if (char.IsLetter(prevChar))
-                        {
-                            shouldAddSpace = true;
-                        }
-                        else if (char.IsDigit(prevChar))
-                        {
-                            shouldAddSpace = false; // "8秒", "10个"
-                        }
-                    }
-                    else if (prevCjk && !nextCjk)
-                    {
-                        // Chinese followed by English word -> keep 1 space (e.g. "右下角 Fluent")
-                        if (char.IsLetter(nextChar))
-                        {
-                            shouldAddSpace = true;
-                        }
-                        else if (char.IsDigit(nextChar))
-                        {
-                            shouldAddSpace = false;
-                        }
-                    }
-                    // CJK followed by CJK -> shouldAddSpace = false (no spaces between Chinese characters)
-
-                    if (shouldAddSpace)
-                    {
-                        sb.Append(' ');
-                    }
+                    if (mergedAny) break;
                 }
-                sb.Append(word);
+            }
+
+            return lines.OrderBy(l => l.CenterY).ToList();
+        }
+
+        private static string FormatLineWords(List<OcrWord> words, bool isEnglish)
+        {
+            if (words == null || words.Count == 0) return string.Empty;
+
+            var sorted = words.OrderBy(w => w.BoundingRect.X).ToList();
+            var sb = new StringBuilder();
+
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                var text = sorted[i].Text;
+                if (string.IsNullOrEmpty(text)) continue;
+
+                if (sb.Length > 0)
+                {
+                    char prev = sb[sb.Length - 1];
+                    char next = text[0];
+
+                    bool addSpace = true;
+                    if (!isEnglish)
+                    {
+                        bool prevCjk = IsCjk(prev);
+                        bool nextCjk = IsCjk(next);
+
+                        if (IsNoSpaceAfter(prev) || IsNoSpaceBefore(next))
+                        {
+                            addSpace = false;
+                        }
+                        else if (!prevCjk && !nextCjk)
+                        {
+                            addSpace = char.IsLetterOrDigit(prev) && char.IsLetterOrDigit(next);
+                        }
+                        else if (!prevCjk && nextCjk)
+                        {
+                            addSpace = char.IsLetter(prev);
+                        }
+                        else if (prevCjk && !nextCjk)
+                        {
+                            addSpace = char.IsLetter(next);
+                        }
+                        else
+                        {
+                            addSpace = false; // CJK + CJK -> no space
+                        }
+                    }
+                    else
+                    {
+                        if (next == ',' || next == '.' || next == ';' || next == ':' || next == '!' || next == '?' || next == ')' || next == ']' || next == '}')
+                            addSpace = false;
+                        if (prev == '(' || prev == '[' || prev == '{' || prev == '$' || prev == '~')
+                            addSpace = false;
+                    }
+
+                    if (addSpace) sb.Append(' ');
+                }
+                sb.Append(text);
             }
             return sb.ToString();
         }
 
-        private static string PostProcessText(string text)
+        private static string PostProcessText(string text, bool isEnglish)
         {
             if (string.IsNullOrEmpty(text)) return text;
 
             var rawLines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            var cleanLines = new System.Collections.Generic.List<string>();
+            var cleanLines = new List<string>();
 
             for (int i = 0; i < rawLines.Length; i++)
             {
                 string line = rawLines[i];
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // 1. Numbered list bullet normalization:
-                // "5，" / "5 ．" / "5、" / "5 " / "5. " -> "5. "
-                // Ensures the dot '.' after leading digits is never omitted
-                line = Regex.Replace(line, @"^(\s*\d+)[，、．,]?(\s*)", "$1. ");
-                // Avoid double dots like "5.. "
-                line = Regex.Replace(line, @"^(\s*\d+)\.\s*\.\s*", "$1. ");
+                if (isEnglish)
+                {
+                    // Fix citation brackets: "[201" -> "[20]", "[91" -> "[9]", "[241" -> "[24]"
+                    line = Regex.Replace(line, @"\[\s*(\d+)[1lI]\s*\]?", "[$1]");
+                    line = Regex.Replace(line, @"\[\s*(\d+)\s*\]", "[$1]");
+                    line = Regex.Replace(line, @"\[\s*(\d+)\s*\)", "[$1]");
 
-                // 2. Remove inline icon artifacts inside parentheses before English identifiers:
-                // e.g. "（巴 EditorWindow）" or "(巴 EditorWindow)" -> "（EditorWindow）"
-                line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]\s+([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
-                line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
+                    // Fix currency "$": "SIOO million" -> "$100 million", "S2 billion" -> "$2 billion", "S250" -> "$250"
+                    line = Regex.Replace(line, @"\bS(?=\d)", "$");
+                    line = Regex.Replace(line, @"\bSIOO\b", "$100");
+                    line = Regex.Replace(line, @"\bSIO\b", "$10");
+                    line = Regex.Replace(line, @"(?<=\()([~～\?])?S(?=\d)", "$");
 
-                // 3. Remove isolated inline icon badge artifact right before UI elements / buttons / icons / menus:
-                // e.g. "新增了 0 按钮" / "新增了0按钮" -> "新增了按钮"
-                line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
+                    // Fix approximate "~$": "(~S322" or "(?S322" or "(S322" or "(0$322" or "(-S322" or "(-$322" -> "(~$322"
+                    line = Regex.Replace(line, @"\([~～\?0O—\-]\s*\$?(\d+)", "(~$1");
 
-                // 4. Disambiguate '0' (zero) and 'O' (letter O), '1' (one), 'l' (el), 'I' (eye) in words, acronyms, and numbers
+                    // Fix spacing before punctuation
+                    line = Regex.Replace(line, @"\s+([,.:;?!])", "$1");
+
+                    // Fix missing space after punctuation / bracket if followed by letter
+                    line = Regex.Replace(line, @"(?<=[a-zA-Z0-9])([,;:])(?=[a-zA-Z])", "$1 ");
+                    line = Regex.Replace(line, @"(\])([a-zA-Z])", "$1 $2");
+                }
+                else
+                {
+                    // 1. Numbered list bullet normalization: "5，" / "5 ．" / "5、" / "5 " -> "5. "
+                    line = Regex.Replace(line, @"^(\s*\d+)[，、．,]?(\s*)", "$1. ");
+                    line = Regex.Replace(line, @"^(\s*\d+)\.\s*\.\s*", "$1. ");
+
+                    // 2. Remove inline icon artifacts inside parentheses before English identifiers
+                    line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]\s+([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
+                    line = Regex.Replace(line, @"([（\(\[【])\s*[^\w\s]{0,2}[巴日口oO0D]([A-Za-z0-9_]+)\s*([）\)\]】])", "$1$2$3");
+
+                    // 3. Remove isolated inline icon badge artifact right before UI elements
+                    line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
+                }
+
+                // 4. Disambiguate '0'/'O', '1'/'l'/'I' in identifiers, numbers, and acronyms
                 line = DisambiguateCharacters(line);
 
                 cleanLines.Add(line);
             }
 
-            // 5. Heading / Title colon recovery:
-            // If a line is a numbered heading (e.g. "5. 右下角 Fluent 结果预览窗" or "6. 编辑器工具栏联动")
-            // and ends with comma/fullwidth comma or has no trailing punctuation followed by a sub-item,
-            // recover the colon "："
-            for (int i = 0; i < cleanLines.Count; i++)
+            // 5. Heading / Title colon recovery for Chinese documents
+            if (!isEnglish)
             {
-                string current = cleanLines[i];
-                bool isHeading = Regex.IsMatch(current, @"^\s*\d+\.");
-
-                if (isHeading)
+                for (int i = 0; i < cleanLines.Count; i++)
                 {
-                    // If it ends with comma or fullwidth comma, replace with colon
-                    if (Regex.IsMatch(current, @"[，,]\s*$"))
+                    string current = cleanLines[i];
+                    bool isHeading = Regex.IsMatch(current, @"^\s*\d+\.");
+
+                    if (isHeading)
                     {
-                        cleanLines[i] = Regex.Replace(current, @"[，,]\s*$", "：");
-                    }
-                    // If it doesn't end with punctuation and next line is a bullet/sub-item, restore trailing colon
-                    else if (i + 1 < cleanLines.Count && (cleanLines[i + 1].TrimStart().StartsWith("·") || cleanLines[i + 1].TrimStart().StartsWith("-") || cleanLines[i + 1].TrimStart().StartsWith("•")))
-                    {
-                        if (!Regex.IsMatch(current, @"[：:。！!？?]\s*$"))
+                        if (Regex.IsMatch(current, @"[，,]\s*$"))
                         {
-                            cleanLines[i] = current.TrimEnd() + "：";
+                            cleanLines[i] = Regex.Replace(current, @"[，,]\s*$", "：");
+                        }
+                        else if (i + 1 < cleanLines.Count && (cleanLines[i + 1].TrimStart().StartsWith("·") || cleanLines[i + 1].TrimStart().StartsWith("-") || cleanLines[i + 1].TrimStart().StartsWith("•")))
+                        {
+                            if (!Regex.IsMatch(current, @"[：:。！!？?]\s*$"))
+                            {
+                                cleanLines[i] = current.TrimEnd() + "：";
+                            }
                         }
                     }
                 }
@@ -214,25 +309,12 @@ namespace QuickShot.Helpers
         {
             if (string.IsNullOrEmpty(text)) return text;
 
-            // 1. Fix letter 'O'/'o' inside numbers and '0' in words
             text = FixOandZero(text);
-
-            // 2. Fix '1', 'l', 'I' inside numeric contexts
             text = FixNumericLAndI(text);
-
-            // 3. Fix acronyms (e.g. "Ul" -> "UI", "lD" -> "ID", "lP" -> "IP", "HTMI" -> "HTML", "APl" -> "API")
             text = FixAcronyms(text);
-
-            // 4. Fix capitalized English words starting with 'l' or '1' where phonotactics require 'I' (Image, Index, Info, Item, Icon, Idea, Is, It, In)
             text = FixLeadingIWords(text);
-
-            // 5. Fix words starting with '1' where 'l' or 'L' is required (e.g. "1ook" -> "look", "1ine" -> "line", "1ocal" -> "local")
             text = FixLeadingLWords(text);
-
-            // 6. Fix digit '1' embedded inside lowercase English words (e.g. "c1ass" -> "class", "c1ick" -> "click", "defau1t" -> "default")
             text = FixEmbeddedOne(text);
-
-            // 7. Fix capital 'I' embedded inside lowercase English words (e.g. "cIass" -> "class", "faiI" -> "fail", "bIur" -> "blur", "heIIo" -> "hello")
             text = FixEmbeddedCapitalI(text);
 
             return text;
@@ -242,13 +324,10 @@ namespace QuickShot.Helpers
         {
             if (string.IsNullOrEmpty(text)) return text;
 
-            // 1. Fix letter 'O'/'o' inside numbers (e.g. "1O0" -> "100", "2O26" -> "2026", "1O%" -> "10%", "1O:30" -> "10:30")
             text = Regex.Replace(text, @"(?<=\d)[Oo](?=\d)", "0");
             text = Regex.Replace(text, @"(?<=\d)[Oo](?=[%％年号月日点分秒\.,:;\s]|$)", "0");
             text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/:])([Oo])(?=\.\d+)", "0");
 
-            // 2. Fix digit '0' inside/starting English words (e.g. "0cr" -> "Ocr", "0crEngine" -> "OcrEngine", "0pen" -> "Open")
-            // Exclude hex literals like "0x" or "0X"
             text = Regex.Replace(text, @"(?<=(?:^|[^\w]))0(?=[a-zA-Z])", m =>
             {
                 int idx = m.Index;
@@ -260,11 +339,9 @@ namespace QuickShot.Helpers
                         return "0";
                     }
                 }
-
                 return "O";
             });
 
-            // Digit '0' embedded inside letters (e.g. "Micr0soft" -> "Microsoft", "JS0N" -> "JSON", "Hell0" -> "Hello")
             text = Regex.Replace(text, @"(?<=[a-zA-Z])0(?=[a-zA-Z])", m =>
             {
                 int idx = m.Index;
@@ -272,12 +349,11 @@ namespace QuickShot.Helpers
                 char next = text[idx + 1];
                 if (char.IsUpper(prev) && char.IsUpper(next))
                 {
-                    return "O"; // JS0N -> JSON
+                    return "O";
                 }
-                return "o"; // Micr0soft -> Microsoft
+                return "o";
             });
 
-            // Digit '0' at end of an English word (e.g. "Hell0" -> "Hello", "inf0" -> "info")
             text = Regex.Replace(text, @"(?<=[a-zA-Z]{2,})0(?=[^a-zA-Z0-9]|$)", m =>
             {
                 int idx = m.Index;
@@ -294,14 +370,10 @@ namespace QuickShot.Helpers
 
         private static string FixNumericLAndI(string text)
         {
-            // 'l' or 'I' flanked by digits (e.g. "2l0" -> "210")
             text = Regex.Replace(text, @"(?<=\d)[lI|](?=\d)", "1");
-            // In IP addresses or decimals: "192.168.l.1" -> "192.168.1.1", "3.l4" -> "3.14"
             text = Regex.Replace(text, @"(?<=\d\.)[lI|](?=\.\d|\d|\b)", "1");
             text = Regex.Replace(text, @"(?<=\b\d+)[lI|](?=\.\d+)", "1");
-            // Flanked by digit on left and units/symbols on right (e.g. "202l年", "202l-", "l00%")
             text = Regex.Replace(text, @"(?<=\d)[lI|](?=[%％年号月日点分秒\.,:;\s]|$)", "1");
-            // Flanked by start/punctuation and digit (e.g. "l00%", "l2:30", "第 l 步")
             text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/第])[lI|](?=\d+)", "1");
             text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/第])[lI|](?=[%％])", "1");
             text = Regex.Replace(text, @"(?<=第\s*)[lI|](?=\s*步|\s*个|\s*章|\s*节|\s*条|\s*项|\s*次|\s*页)", "1");
@@ -311,7 +383,6 @@ namespace QuickShot.Helpers
 
         private static string FixAcronyms(string text)
         {
-            // Acronyms where 'l' or '1' is mistaken for 'I':
             text = Regex.Replace(text, @"\bU[l1]\b", "UI");
             text = Regex.Replace(text, @"\b[l1]D\b", "ID");
             text = Regex.Replace(text, @"\b[l1]P\b", "IP");
@@ -332,91 +403,69 @@ namespace QuickShot.Helpers
 
         private static string FixLeadingIWords(string text)
         {
-            // In English phonotactics, no English word begins with lowercase 'l' followed by consonants:
-            // "lm..." -> "Im..." (Image, Import, Implicit, Impact, Immense, Immunity, ...)
-            // "ln..." -> "In..." (Index, Info, Input, Include, Inside, Install, Init, Instance, ...)
-            // "lt..." -> "It..." (Item, Iterate, Italic, ...)
-            // "lc..." -> "Ic..." (Icon, Ice, ...)
-            // "ld..." -> "Id..." (Idea, Identify, Idle, Idol, ...)
-            // "ls..." -> "Is..." (Is, Issue, Island, ...)
-            // "lg..." -> "Ig..." (Ignore, Ignite, ...)
             text = Regex.Replace(text, @"\b[l1]([mnctdsg][a-zA-Z]*)", "I$1");
             return text;
         }
 
         private static string FixLeadingLWords(string text)
         {
-            // Words starting with '1' followed by vowels / common L-initial consonants:
-            // "1ook" -> "look", "1ine" -> "line", "1evel" -> "level", "1ist" -> "list",
-            // "1og" -> "log", "1oad" -> "load", "1ink" -> "link", "1ayout" -> "layout",
-            // "1ight" -> "light", "1ast" -> "last", "1ocal" -> "local", "1ock" -> "lock"
             text = Regex.Replace(text, @"\b1([aAeEiIoOuUyYrR][a-zA-Z]*)", "l$1");
             return text;
         }
 
         private static string FixEmbeddedOne(string text)
         {
-            // Digit '1' inside a word flanked by letters:
-            // e.g. "c1ass" -> "class", "c1ick" -> "click", "defau1t" -> "default", "uti1s" -> "utils"
             text = Regex.Replace(text, @"(?<=[a-zA-Z])1(?=[a-zA-Z])", "l");
             return text;
         }
 
         private static string FixEmbeddedCapitalI(string text)
         {
-            // Capital 'I' inside lowercase word flanked by lowercase letters:
-            // e.g. "cIass" -> "class", "cIick" -> "click", "faiI" -> "fail", "utiIs" -> "utils", "bIur" -> "blur"
             text = Regex.Replace(text, @"(?<=[a-z])I+(?=[a-z])", m => new string('l', m.Length));
             text = Regex.Replace(text, @"(?<=[a-z]{2,})I+(?=[^a-zA-Z0-9]|$)", m => new string('l', m.Length));
             return text;
         }
 
-        private static Bitmap PreprocessBitmap(Bitmap src)
+        private static async Task<SoftwareBitmap> PreprocessToSoftwareBitmapAsync(Bitmap src, float contrast = 1.35f)
         {
-            // Dynamic scale factor: small screen fonts (12-14px) are upscaled 2x using HighQualityBicubic
-            // to provide optimal stroke rendering for Windows OCR neural recognizer.
             float scale = 2.0f;
-            if (src.Width >= 2000 || src.Height >= 2000)
-            {
-                scale = 1.0f;
-            }
-            else if (src.Width >= 1200 || src.Height >= 1200)
-            {
-                scale = 1.5f;
-            }
+            if (src.Width >= 2000 || src.Height >= 2000) scale = 1.0f;
+            else if (src.Width >= 1200 || src.Height >= 1200) scale = 1.5f;
 
             int newW = (int)(src.Width * scale);
             int newH = (int)(src.Height * scale);
-            var dest = new Bitmap(newW, newH, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(dest))
+
+            using (var dest = new Bitmap(newW, newH, PixelFormat.Format32bppArgb))
             {
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.SmoothingMode = SmoothingMode.HighQuality;
-                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                g.CompositingQuality = CompositingQuality.HighQuality;
-                g.Clear(System.Drawing.Color.White);
-                g.DrawImage(src, new Rectangle(0, 0, newW, newH), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel);
-            }
+                using (var g = Graphics.FromImage(dest))
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.SmoothingMode = SmoothingMode.HighQuality;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.CompositingQuality = CompositingQuality.HighQuality;
+                    g.Clear(Color.White);
 
-            return dest;
-        }
+                    using (var ia = new ImageAttributes())
+                    {
+                        float c = contrast;
+                        float t = (1.0f - c) / 2.0f;
+                        ColorMatrix cm = new ColorMatrix(new float[][]
+                        {
+                            new float[] {c, 0, 0, 0, 0},
+                            new float[] {0, c, 0, 0, 0},
+                            new float[] {0, 0, c, 0, 0},
+                            new float[] {0, 0, 0, 1, 0},
+                            new float[] {t, t, t, 0, 1}
+                        });
+                        ia.SetColorMatrix(cm);
+                        g.DrawImage(src, new Rectangle(0, 0, newW, newH), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, ia);
+                    }
+                }
 
-        public static async Task<string> RecognizeTextAsync(Bitmap bitmap)
-        {
-            if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
-                return string.Empty;
-
-            try
-            {
-                SoftwareBitmap softwareBmp = null;
-
-                // Preprocess and upscale image for maximum recognition accuracy
-                using (var processed = PreprocessBitmap(bitmap))
                 using (var ms = new MemoryStream())
                 {
-                    processed.Save(ms, ImageFormat.Bmp);
+                    dest.Save(ms, ImageFormat.Bmp);
                     byte[] bytes = ms.ToArray();
-
                     var ras = new InMemoryRandomAccessStream();
                     using (var dw = new DataWriter(ras))
                     {
@@ -427,76 +476,155 @@ namespace QuickShot.Helpers
                     }
                     ras.Seek(0);
                     var decoder = await ToTask(BitmapDecoder.CreateAsync(ras));
-                    softwareBmp = await ToTask(decoder.GetSoftwareBitmapAsync());
+                    return await ToTask(decoder.GetSoftwareBitmapAsync());
                 }
+            }
+        }
 
+        public static async Task<string> RecognizeTextAsync(Bitmap bitmap)
+        {
+            if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
+                return string.Empty;
+
+            try
+            {
+                var softwareBmp = await PreprocessToSoftwareBitmapAsync(bitmap, 1.35f);
                 if (softwareBmp == null) return string.Empty;
 
-                OcrEngine engine = null;
-
-                // Priority 1: Simplified Chinese (covers Chinese + English seamlessly)
-                string[] preferredLangs = new string[] { "zh-Hans-CN", "zh-CN", "zh-Hans", "zh-Hant", "zh-HK", "zh-TW" };
-                foreach (var tag in preferredLangs)
+                // Load Chinese Engine
+                OcrEngine zhEngine = null;
+                string[] zhLangs = new string[] { "zh-Hans-CN", "zh-CN", "zh-Hans", "zh-Hant", "zh-HK", "zh-TW" };
+                foreach (var tag in zhLangs)
                 {
                     try
                     {
                         var lang = new Language(tag);
                         if (OcrEngine.IsLanguageSupported(lang))
                         {
-                            engine = OcrEngine.TryCreateFromLanguage(lang);
-                            if (engine != null) break;
+                            zhEngine = OcrEngine.TryCreateFromLanguage(lang);
+                            if (zhEngine != null) break;
                         }
                     }
                     catch { }
                 }
 
-                // Priority 2: System user profile language
-                if (engine == null)
+                // Load English Engine
+                OcrEngine engEngine = null;
+                string[] engLangs = new string[] { "en-US", "en-GB", "en-CA", "en-AU", "en" };
+                foreach (var tag in engLangs)
                 {
                     try
                     {
-                        engine = OcrEngine.TryCreateFromUserProfileLanguages();
+                        var lang = new Language(tag);
+                        if (OcrEngine.IsLanguageSupported(lang))
+                        {
+                            engEngine = OcrEngine.TryCreateFromLanguage(lang);
+                            if (engEngine != null) break;
+                        }
                     }
                     catch { }
                 }
 
-                // Priority 3: Any available recognizer
-                if (engine == null)
+                // Fallback engines
+                if (zhEngine == null && engEngine == null)
+                {
+                    try { zhEngine = OcrEngine.TryCreateFromUserProfileLanguages(); } catch { }
+                }
+                if (zhEngine == null && engEngine == null)
                 {
                     var available = OcrEngine.AvailableRecognizerLanguages;
                     if (available != null && available.Count > 0)
                     {
-                        engine = OcrEngine.TryCreateFromLanguage(available[0]);
+                        zhEngine = OcrEngine.TryCreateFromLanguage(available[0]);
                     }
                 }
 
-                if (engine == null)
+                if (zhEngine == null && engEngine == null)
                 {
                     throw new InvalidOperationException("当前系统未安装或未启用 OCR 识别语言包。");
                 }
 
-                var ocrResult = await ToTask(engine.RecognizeAsync(softwareBmp));
-                if (ocrResult == null || ocrResult.Lines == null || ocrResult.Lines.Count == 0)
+                // Run preliminary recognition to determine primary language
+                OcrResult primaryResult = null;
+                bool isEnglish = false;
+
+                if (zhEngine != null)
+                {
+                    var zhResult = await ToTask(zhEngine.RecognizeAsync(softwareBmp));
+                    int totalChars = 0;
+                    int cjkCount = 0;
+
+                    if (zhResult != null && zhResult.Lines != null)
+                    {
+                        foreach (var l in zhResult.Lines)
+                        {
+                            string t = l.Text;
+                            totalChars += t.Length;
+                            cjkCount += CountCjk(t);
+                        }
+                    }
+
+                    double cjkRatio = totalChars > 0 ? (double)cjkCount / totalChars : 0;
+
+                    // If text contains virtually no Chinese characters and English engine is available,
+                    // switch to English OCR engine for maximum dictionary & tokenizer accuracy
+                    if (cjkRatio < 0.04 && engEngine != null)
+                    {
+                        primaryResult = await ToTask(engEngine.RecognizeAsync(softwareBmp));
+                        isEnglish = true;
+                    }
+                    else
+                    {
+                        primaryResult = zhResult;
+                        isEnglish = false;
+                    }
+                }
+                else if (engEngine != null)
+                {
+                    primaryResult = await ToTask(engEngine.RecognizeAsync(softwareBmp));
+                    isEnglish = true;
+                }
+
+                if (primaryResult == null || primaryResult.Lines == null || primaryResult.Lines.Count == 0)
                 {
                     return string.Empty;
                 }
 
-                var sb = new StringBuilder();
-                for (int i = 0; i < ocrResult.Lines.Count; i++)
+                // Merge same-row split words and superscripts (e.g. [20], [21], footnote citations)
+                var mergedLines = SortAndMergeLines(primaryResult.Lines);
+
+                var outSb = new StringBuilder();
+                double lastLineCenterY = -1;
+                double lastLineHeight = 20;
+
+                for (int i = 0; i < mergedLines.Count; i++)
                 {
-                    var line = ocrResult.Lines[i];
-                    if (line != null)
+                    var line = mergedLines[i];
+                    double curCenterY = line.CenterY;
+                    double curHeight = line.Height;
+
+                    if (lastLineCenterY > 0)
                     {
-                        string formattedLine = CleanAndFormatLine(line);
-                        if (!string.IsNullOrWhiteSpace(formattedLine))
+                        double gap = curCenterY - lastLineCenterY;
+                        // Add empty line for distinct paragraphs
+                        if (gap > Math.Max(lastLineHeight, curHeight) * 1.4)
                         {
-                            sb.AppendLine(formattedLine);
+                            outSb.AppendLine();
                         }
                     }
+
+                    string formatted = FormatLineWords(line.Words, isEnglish);
+                    if (!string.IsNullOrWhiteSpace(formatted))
+                    {
+                        outSb.AppendLine(formatted);
+                    }
+
+                    lastLineCenterY = curCenterY;
+                    lastLineHeight = curHeight;
                 }
 
-                string rawResult = sb.ToString().TrimEnd();
-                return PostProcessText(rawResult);
+                string rawResult = outSb.ToString().TrimEnd();
+                return PostProcessText(rawResult, isEnglish);
             }
             catch (Exception ex)
             {
@@ -505,7 +633,6 @@ namespace QuickShot.Helpers
             }
             finally
             {
-                // Trim memory immediately after OCR execution to keep background memory minimal
                 MemoryHelper.TrimWorkingSet();
             }
         }
