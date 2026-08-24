@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Text;
@@ -44,6 +45,130 @@ namespace QuickShot.Helpers
             return tcs.Task;
         }
 
+        private static bool IsCjk(char c)
+        {
+            return (c >= 0x4E00 && c <= 0x9FFF) || // CJK Unified Ideographs
+                   (c >= 0x3400 && c <= 0x4DBF) || // CJK Extension A
+                   (c >= 0xF900 && c <= 0xFAFF) || // CJK Compatibility
+                   (c >= 0x3000 && c <= 0x303F) || // CJK Symbols and Punctuation (，。！？等)
+                   (c >= 0xFF00 && c <= 0xFFEF);   // Halfwidth and Fullwidth Forms（中文括号等）
+        }
+
+        private static bool IsNoSpaceBefore(char c)
+        {
+            return c == '.' || c == ',' || c == ':' || c == ';' || c == '!' || c == '?' ||
+                   c == ')' || c == ']' || c == '}' || c == '>' || c == '”' || c == '’' ||
+                   c == '、' || c == '。' || c == '，' || c == '：' || c == '；' || c == '！' ||
+                   c == '？' || c == '）' || c == '】' || c == '》' || c == '％' || c == '%' ||
+                   c == '/' || c == '\\';
+        }
+
+        private static bool IsNoSpaceAfter(char c)
+        {
+            return c == '(' || c == '[' || c == '{' || c == '<' || c == '“' || c == '‘' ||
+                   c == '（' || c == '【' || c == '《' || c == '/' || c == '\\' || c == '@' ||
+                   c == '#' || c == '$' || c == '￥';
+        }
+
+        private static string CleanAndFormatLine(OcrLine line)
+        {
+            if (line == null || line.Words == null || line.Words.Count == 0)
+                return string.Empty;
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < line.Words.Count; i++)
+            {
+                var word = line.Words[i].Text;
+                if (string.IsNullOrEmpty(word)) continue;
+
+                if (i > 0 && sb.Length > 0)
+                {
+                    char prevChar = sb[sb.Length - 1];
+                    char nextChar = word[0];
+
+                    bool prevCjk = IsCjk(prevChar);
+                    bool nextCjk = IsCjk(nextChar);
+
+                    bool shouldAddSpace = false;
+
+                    if (IsNoSpaceAfter(prevChar) || IsNoSpaceBefore(nextChar))
+                    {
+                        shouldAddSpace = false;
+                    }
+                    else if (!prevCjk && !nextCjk)
+                    {
+                        // Both Latin/digits (e.g. "Hello" and "World") -> keep space
+                        if (char.IsLetterOrDigit(prevChar) && char.IsLetterOrDigit(nextChar))
+                        {
+                            shouldAddSpace = true;
+                        }
+                    }
+                    else if (!prevCjk && nextCjk)
+                    {
+                        // English word followed by Chinese -> keep 1 space (e.g. "Fluent 结果")
+                        if (char.IsLetter(prevChar))
+                        {
+                            shouldAddSpace = true;
+                        }
+                        else if (char.IsDigit(prevChar))
+                        {
+                            shouldAddSpace = false; // "8秒", "10个"
+                        }
+                    }
+                    else if (prevCjk && !nextCjk)
+                    {
+                        // Chinese followed by English word -> keep 1 space (e.g. "右下角 Fluent")
+                        if (char.IsLetter(nextChar))
+                        {
+                            shouldAddSpace = true;
+                        }
+                        else if (char.IsDigit(nextChar))
+                        {
+                            shouldAddSpace = false;
+                        }
+                    }
+                    // CJK followed by CJK -> shouldAddSpace = false (no spaces between Chinese characters)
+
+                    if (shouldAddSpace)
+                    {
+                        sb.Append(' ');
+                    }
+                }
+                sb.Append(word);
+            }
+            return sb.ToString();
+        }
+
+        private static Bitmap PreprocessBitmap(Bitmap src)
+        {
+            // Dynamic scale factor: small screen fonts (12-14px) are upscaled 2x using HighQualityBicubic
+            // to provide optimal stroke rendering for Windows OCR neural recognizer.
+            float scale = 2.0f;
+            if (src.Width >= 2000 || src.Height >= 2000)
+            {
+                scale = 1.0f;
+            }
+            else if (src.Width >= 1200 || src.Height >= 1200)
+            {
+                scale = 1.5f;
+            }
+
+            int newW = (int)(src.Width * scale);
+            int newH = (int)(src.Height * scale);
+            var dest = new Bitmap(newW, newH, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(dest))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.SmoothingMode = SmoothingMode.HighQuality;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.CompositingQuality = CompositingQuality.HighQuality;
+                g.Clear(System.Drawing.Color.White);
+                g.DrawImage(src, new Rectangle(0, 0, newW, newH), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel);
+            }
+
+            return dest;
+        }
+
         public static async Task<string> RecognizeTextAsync(Bitmap bitmap)
         {
             if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
@@ -52,9 +177,12 @@ namespace QuickShot.Helpers
             try
             {
                 SoftwareBitmap softwareBmp = null;
+
+                // Preprocess and upscale image for maximum recognition accuracy
+                using (var processed = PreprocessBitmap(bitmap))
                 using (var ms = new MemoryStream())
                 {
-                    bitmap.Save(ms, ImageFormat.Bmp);
+                    processed.Save(ms, ImageFormat.Bmp);
                     byte[] bytes = ms.ToArray();
 
                     var ras = new InMemoryRandomAccessStream();
@@ -125,9 +253,13 @@ namespace QuickShot.Helpers
                 for (int i = 0; i < ocrResult.Lines.Count; i++)
                 {
                     var line = ocrResult.Lines[i];
-                    if (line != null && !string.IsNullOrWhiteSpace(line.Text))
+                    if (line != null)
                     {
-                        sb.AppendLine(line.Text.Trim());
+                        string formattedLine = CleanAndFormatLine(line);
+                        if (!string.IsNullOrWhiteSpace(formattedLine))
+                        {
+                            sb.AppendLine(formattedLine);
+                        }
                     }
                 }
 
