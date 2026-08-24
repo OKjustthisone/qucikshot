@@ -168,10 +168,14 @@ namespace QuickShot.Helpers
                 // e.g. "新增了 0 按钮" / "新增了0按钮" -> "新增了按钮"
                 line = Regex.Replace(line, @"(新增了|添加了|点击|按下|选中|包含|带有|设置|在|增加)\s*[0oO口日巴回田D]\s*(按钮|图标|选项|功能|菜单|窗口|工具栏)", "$1$2");
 
+                // 4. Disambiguate '0' (zero) and 'O' (letter O) in identifiers, words, and numbers
+                // e.g. "Windows.media.0cr.0crEngine" -> "Windows.media.Ocr.OcrEngine", "1O0%" -> "100%"
+                line = FixOandZero(line);
+
                 cleanLines.Add(line);
             }
 
-            // 4. Heading / Title colon recovery:
+            // 5. Heading / Title colon recovery:
             // If a line is a numbered heading (e.g. "5. 右下角 Fluent 结果预览窗" or "6. 编辑器工具栏联动")
             // and ends with comma/fullwidth comma or has no trailing punctuation followed by a sub-item,
             // recover the colon "："
@@ -205,6 +209,60 @@ namespace QuickShot.Helpers
             }
 
             return result.ToString().TrimEnd();
+        }
+
+        private static string FixOandZero(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // 1. Fix letter 'O'/'o' inside numbers (e.g. "1O0" -> "100", "2O26" -> "2026", "1O%" -> "10%", "1O:30" -> "10:30")
+            text = Regex.Replace(text, @"(?<=\d)[Oo](?=\d)", "0");
+            text = Regex.Replace(text, @"(?<=\d)[Oo](?=[%％年号月日点分秒\.,:;\s]|$)", "0");
+            text = Regex.Replace(text, @"(?<=^|[\s\(\[\{=+\-*/:])([Oo])(?=\.\d+)", "0");
+
+            // 2. Fix digit '0' inside/starting English words (e.g. "0cr" -> "Ocr", "0crEngine" -> "OcrEngine", "0pen" -> "Open")
+            // Exclude hex literals like "0x" or "0X"
+            text = Regex.Replace(text, @"(?<=(?:^|[^\w]))0(?=[a-zA-Z])", m =>
+            {
+                int idx = m.Index;
+                if (idx + 2 <= text.Length)
+                {
+                    char next = text[idx + 1];
+                    if ((next == 'x' || next == 'X') && idx + 2 < text.Length && "0123456789abcdefABCDEF".IndexOf(text[idx + 2]) >= 0)
+                    {
+                        return "0";
+                    }
+                }
+
+                return "O";
+            });
+
+            // Digit '0' embedded inside letters (e.g. "Micr0soft" -> "Microsoft", "JS0N" -> "JSON", "Hell0" -> "Hello")
+            text = Regex.Replace(text, @"(?<=[a-zA-Z])0(?=[a-zA-Z])", m =>
+            {
+                int idx = m.Index;
+                char prev = text[idx - 1];
+                char next = text[idx + 1];
+                if (char.IsUpper(prev) && char.IsUpper(next))
+                {
+                    return "O"; // JS0N -> JSON
+                }
+                return "o"; // Micr0soft -> Microsoft
+            });
+
+            // Digit '0' at end of an English word (e.g. "Hell0" -> "Hello", "inf0" -> "info")
+            text = Regex.Replace(text, @"(?<=[a-zA-Z]{2,})0(?=[^a-zA-Z0-9]|$)", m =>
+            {
+                int idx = m.Index;
+                char prev = text[idx - 1];
+                if (char.IsUpper(prev))
+                {
+                    return "O";
+                }
+                return "o";
+            });
+
+            return text;
         }
 
         private static Bitmap PreprocessBitmap(Bitmap src)
