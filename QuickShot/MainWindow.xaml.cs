@@ -150,6 +150,9 @@ namespace QuickShot
             base.OnClosed(e);
         }
 
+        private const int WM_DISPLAYCHANGE = 0x007E;
+        private const int WM_DPICHANGED = 0x02E0;
+
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             if (msg == WM_HOTKEY)
@@ -175,6 +178,11 @@ namespace QuickShot
                     StartOcrCapture();
                     handled = true;
                 }
+            }
+            else if (msg == WM_DISPLAYCHANGE || msg == WM_DPICHANGED)
+            {
+                // Display topology or DPI dynamically changed (e.g. plugging/unplugging monitors, switching 1080P/2K)
+                MemoryHelper.TrimWorkingSet();
             }
             return IntPtr.Zero;
         }

@@ -17,7 +17,7 @@ namespace QuickShot
 
         private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
 
-        protected override void OnStartup(StartupEventArgs e)
+        static App()
         {
             try
             {
@@ -35,6 +35,18 @@ namespace QuickShot
                     {
                         SetProcessDPIAware();
                     }
+                }
+            }
+            catch { }
+        }
+
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            try
+            {
+                if (Environment.OSVersion.Version >= new Version(10, 0, 15063))
+                {
+                    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
                 }
             }
             catch { }

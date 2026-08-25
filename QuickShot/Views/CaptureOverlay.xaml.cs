@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using QuickShot.Helpers;
@@ -33,6 +34,8 @@ namespace QuickShot.Views
         private double _scaleY = 1.0;
         private int _virtLeft = 0;
         private int _virtTop = 0;
+        private int _virtWidth = 0;
+        private int _virtHeight = 0;
         private Color _currentPixelColor = Colors.White;
         private string _currentHex = "#FFFFFF";
         private string _currentRgb = "RGB: (255, 255, 255)";
@@ -51,31 +54,18 @@ namespace QuickShot.Views
 
             _virtLeft = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
             _virtTop = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+            _virtWidth = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
+            _virtHeight = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
 
-            double sw = SystemParameters.VirtualScreenWidth;
-            double sh = SystemParameters.VirtualScreenHeight;
-            double sl = SystemParameters.VirtualScreenLeft;
-            double st = SystemParameters.VirtualScreenTop;
+            if (_virtWidth <= 0 || _virtHeight <= 0)
+            {
+                _virtLeft = 0;
+                _virtTop = 0;
+                _virtWidth = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSCREEN);
+                _virtHeight = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSCREEN);
+            }
 
-            Left = sl;
-            Top = st;
-            Width = sw;
-            Height = sh;
-
-            // Calculate precise scaling ratio between WPF DIPs and physical pixels
-            _scaleX = (double)_screenBitmap.Width / sw;
-            _scaleY = (double)_screenBitmap.Height / sh;
-
-            ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
-            ScreenImage.Width = sw;
-            ScreenImage.Height = sh;
-
-            DimmerTop.Width = sw; DimmerTop.Height = sh;
-            DimmerBottom.Width = sw; DimmerBottom.Height = sh;
-            DimmerLeft.Width = sw; DimmerLeft.Height = sh;
-            DimmerRight.Width = sw; DimmerRight.Height = sh;
-
-            HideAllDimmer();
+            UpdateOverlayBounds();
 
             if (_isOcrMode)
             {
@@ -85,6 +75,78 @@ namespace QuickShot.Views
             MouseDown += OnMouseDown;
             MouseMove += OnMouseMove;
             MouseUp += OnMouseUp;
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            IntPtr handle = new WindowInteropHelper(this).Handle;
+            HwndSource source = HwndSource.FromHwnd(handle);
+            if (source != null)
+            {
+                source.AddHook(HwndHook);
+            }
+
+            // Explicitly position HWND to the exact virtual screen physical coordinates
+            if (handle != IntPtr.Zero && _virtWidth > 0 && _virtHeight > 0)
+            {
+                NativeMethods.SetWindowPos(handle, NativeMethods.HWND_TOPMOST, _virtLeft, _virtTop, _virtWidth, _virtHeight,
+                    NativeMethods.SWP_SHOWWINDOW);
+            }
+        }
+
+        private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == 0x02E0) // WM_DPICHANGED
+            {
+                UpdateOverlayBounds();
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
+        private void UpdateOverlayBounds()
+        {
+            DpiScale dpi;
+            try
+            {
+                dpi = VisualTreeHelper.GetDpi(this);
+            }
+            catch
+            {
+                dpi = new DpiScale(1.0, 1.0);
+            }
+
+            double dpiX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
+            double dpiY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
+
+            double dipLeft = _virtLeft / dpiX;
+            double dipTop = _virtTop / dpiY;
+            double dipWidth = _virtWidth / dpiX;
+            double dipHeight = _virtHeight / dpiY;
+
+            Left = dipLeft;
+            Top = dipTop;
+            Width = dipWidth;
+            Height = dipHeight;
+
+            // Calculate precise scaling ratio between WPF DIPs and physical bitmap pixels
+            _scaleX = (double)_screenBitmap.Width / dipWidth;
+            _scaleY = (double)_screenBitmap.Height / dipHeight;
+
+            OverlayCanvas.Width = dipWidth;
+            OverlayCanvas.Height = dipHeight;
+
+            ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
+            ScreenImage.Width = dipWidth;
+            ScreenImage.Height = dipHeight;
+
+            DimmerTop.Width = dipWidth; DimmerTop.Height = dipHeight;
+            DimmerBottom.Width = dipWidth; DimmerBottom.Height = dipHeight;
+            DimmerLeft.Width = dipWidth; DimmerLeft.Height = dipHeight;
+            DimmerRight.Width = dipWidth; DimmerRight.Height = dipHeight;
+
+            HideAllDimmer();
         }
 
         private void HideAllDimmer()
