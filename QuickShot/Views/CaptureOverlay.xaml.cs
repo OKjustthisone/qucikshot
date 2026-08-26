@@ -30,8 +30,6 @@ namespace QuickShot.Views
 
         private bool _isOcrMode = false;
         private readonly Bitmap _preCapturedBitmap;
-        private double _scaleX = 1.0;
-        private double _scaleY = 1.0;
         private int _virtLeft = 0;
         private int _virtTop = 0;
         private int _virtWidth = 0;
@@ -65,7 +63,8 @@ namespace QuickShot.Views
                 _virtHeight = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSCREEN);
             }
 
-            UpdateOverlayBounds();
+            ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
+            HideAllDimmer();
 
             if (_isOcrMode)
             {
@@ -87,11 +86,11 @@ namespace QuickShot.Views
                 source.AddHook(HwndHook);
             }
 
-            // Explicitly position HWND to the exact virtual screen physical coordinates
+            // Force HWND position to exact physical virtual screen bounds
             if (handle != IntPtr.Zero && _virtWidth > 0 && _virtHeight > 0)
             {
                 NativeMethods.SetWindowPos(handle, NativeMethods.HWND_TOPMOST, _virtLeft, _virtTop, _virtWidth, _virtHeight,
-                    NativeMethods.SWP_SHOWWINDOW);
+                    NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_FRAMECHANGED);
             }
         }
 
@@ -99,54 +98,14 @@ namespace QuickShot.Views
         {
             if (msg == 0x02E0) // WM_DPICHANGED
             {
-                UpdateOverlayBounds();
+                if (hwnd != IntPtr.Zero && _virtWidth > 0 && _virtHeight > 0)
+                {
+                    NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, _virtLeft, _virtTop, _virtWidth, _virtHeight,
+                        NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_FRAMECHANGED);
+                }
                 handled = true;
             }
             return IntPtr.Zero;
-        }
-
-        private void UpdateOverlayBounds()
-        {
-            DpiScale dpi;
-            try
-            {
-                dpi = VisualTreeHelper.GetDpi(this);
-            }
-            catch
-            {
-                dpi = new DpiScale(1.0, 1.0);
-            }
-
-            double dpiX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
-            double dpiY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
-
-            double dipLeft = _virtLeft / dpiX;
-            double dipTop = _virtTop / dpiY;
-            double dipWidth = _virtWidth / dpiX;
-            double dipHeight = _virtHeight / dpiY;
-
-            Left = dipLeft;
-            Top = dipTop;
-            Width = dipWidth;
-            Height = dipHeight;
-
-            // Calculate precise scaling ratio between WPF DIPs and physical bitmap pixels
-            _scaleX = (double)_screenBitmap.Width / dipWidth;
-            _scaleY = (double)_screenBitmap.Height / dipHeight;
-
-            OverlayCanvas.Width = dipWidth;
-            OverlayCanvas.Height = dipHeight;
-
-            ScreenImage.Source = ScreenshotHelper.BitmapToBitmapSource(_screenBitmap);
-            ScreenImage.Width = dipWidth;
-            ScreenImage.Height = dipHeight;
-
-            DimmerTop.Width = dipWidth; DimmerTop.Height = dipHeight;
-            DimmerBottom.Width = dipWidth; DimmerBottom.Height = dipHeight;
-            DimmerLeft.Width = dipWidth; DimmerLeft.Height = dipHeight;
-            DimmerRight.Width = dipWidth; DimmerRight.Height = dipHeight;
-
-            HideAllDimmer();
         }
 
         private void HideAllDimmer()
@@ -159,32 +118,33 @@ namespace QuickShot.Views
 
         private void UpdateDimmer(double x, double y, double w, double h)
         {
-            double sw = Width;
-            double sh = Height;
+            double sw = OverlayCanvas.ActualWidth;
+            double sh = OverlayCanvas.ActualHeight;
+            if (sw <= 0 || sh <= 0) return;
 
             DimmerTop.Visibility = Visibility.Visible;
             Canvas.SetLeft(DimmerTop, 0);
             Canvas.SetTop(DimmerTop, 0);
             DimmerTop.Width = sw;
-            DimmerTop.Height = y;
+            DimmerTop.Height = Math.Max(0, y);
 
             DimmerBottom.Visibility = Visibility.Visible;
             Canvas.SetLeft(DimmerBottom, 0);
             Canvas.SetTop(DimmerBottom, y + h);
             DimmerBottom.Width = sw;
-            DimmerBottom.Height = sh - (y + h);
+            DimmerBottom.Height = Math.Max(0, sh - (y + h));
 
             DimmerLeft.Visibility = Visibility.Visible;
             Canvas.SetLeft(DimmerLeft, 0);
             Canvas.SetTop(DimmerLeft, y);
-            DimmerLeft.Width = x;
-            DimmerLeft.Height = h;
+            DimmerLeft.Width = Math.Max(0, x);
+            DimmerLeft.Height = Math.Max(0, h);
 
             DimmerRight.Visibility = Visibility.Visible;
             Canvas.SetLeft(DimmerRight, x + w);
             Canvas.SetTop(DimmerRight, y);
-            DimmerRight.Width = sw - (x + w);
-            DimmerRight.Height = h;
+            DimmerRight.Width = Math.Max(0, sw - (x + w));
+            DimmerRight.Height = Math.Max(0, h);
         }
 
         private void OnKeyDown(object sender, KeyEventArgs e)
@@ -224,8 +184,15 @@ namespace QuickShot.Views
 
         private void ShowColorContextMenu(Point pos)
         {
-            int px = (int)Math.Round(pos.X * _scaleX);
-            int py = (int)Math.Round(pos.Y * _scaleY);
+            double canvasW = OverlayCanvas.ActualWidth;
+            double canvasH = OverlayCanvas.ActualHeight;
+            if (canvasW <= 0 || canvasH <= 0 || _screenBitmap == null) return;
+
+            double relX = Math.Max(0.0, Math.Min(1.0, pos.X / canvasW));
+            double relY = Math.Max(0.0, Math.Min(1.0, pos.Y / canvasH));
+
+            int px = (int)Math.Round(relX * (_screenBitmap.Width - 1));
+            int py = (int)Math.Round(relY * (_screenBitmap.Height - 1));
 
             if (px >= 0 && px < _screenBitmap.Width && py >= 0 && py < _screenBitmap.Height)
             {
@@ -251,9 +218,17 @@ namespace QuickShot.Views
 
         private void OnMouseMove(object sender, MouseEventArgs e)
         {
+            double canvasW = OverlayCanvas.ActualWidth;
+            double canvasH = OverlayCanvas.ActualHeight;
+            if (canvasW <= 0 || canvasH <= 0 || _screenBitmap == null || _screenBitmap.Width <= 0 || _screenBitmap.Height <= 0)
+                return;
+
             var pos = e.GetPosition(OverlayCanvas);
-            int px = (int)Math.Round(pos.X * _scaleX);
-            int py = (int)Math.Round(pos.Y * _scaleY);
+            double relX = Math.Max(0.0, Math.Min(1.0, pos.X / canvasW));
+            double relY = Math.Max(0.0, Math.Min(1.0, pos.Y / canvasH));
+
+            int px = (int)Math.Round(relX * (_screenBitmap.Width - 1));
+            int py = (int)Math.Round(relY * (_screenBitmap.Height - 1));
 
             if (px >= 0 && px < _screenBitmap.Width && py >= 0 && py < _screenBitmap.Height)
             {
@@ -281,11 +256,11 @@ namespace QuickShot.Views
                 double panelLeft = pos.X + 20;
                 double panelTop = pos.Y + 20;
 
-                if (panelLeft + panelWidth > Width)
+                if (panelLeft + panelWidth > canvasW)
                 {
                     panelLeft = pos.X - panelWidth - 10;
                 }
-                if (panelTop + panelHeight > Height)
+                if (panelTop + panelHeight > canvasH)
                 {
                     panelTop = pos.Y - panelHeight - 10;
                 }
@@ -321,8 +296,8 @@ namespace QuickShot.Views
                     SelectionBorder.Visibility = Visibility.Visible;
                     UpdateDimmer(x, y, w, h);
 
-                    int selW = (int)Math.Round(w * _scaleX);
-                    int selH = (int)Math.Round(h * _scaleY);
+                    int selW = (int)Math.Round((w / canvasW) * _screenBitmap.Width);
+                    int selH = (int)Math.Round((h / canvasH) * _screenBitmap.Height);
                     MagnifierPosText.Text = string.Format("尺寸: {0} x {1}", selW, selH);
                 }
             }
@@ -362,10 +337,15 @@ namespace QuickShot.Views
                                 }
                             }
 
-                            double winLeft = (x - _virtLeft) / _scaleX;
-                            double winTop = (y - _virtTop) / _scaleY;
-                            double winWidth = w / _scaleX;
-                            double winHeight = h / _scaleY;
+                            double relLeft = (double)(x - _virtLeft) / _screenBitmap.Width;
+                            double relTop = (double)(y - _virtTop) / _screenBitmap.Height;
+                            double relWidth = (double)w / _screenBitmap.Width;
+                            double relHeight = (double)h / _screenBitmap.Height;
+
+                            double winLeft = relLeft * canvasW;
+                            double winTop = relTop * canvasH;
+                            double winWidth = relWidth * canvasW;
+                            double winHeight = relHeight * canvasH;
 
                             Canvas.SetLeft(WindowHighlight, winLeft);
                             Canvas.SetTop(WindowHighlight, winTop);
@@ -407,6 +387,8 @@ namespace QuickShot.Views
         {
             var pos = e.GetPosition(OverlayCanvas);
             double elapsed = (DateTime.Now - _mouseDownTime).TotalMilliseconds;
+            double canvasW = OverlayCanvas.ActualWidth;
+            double canvasH = OverlayCanvas.ActualHeight;
 
             if (!_isDragging && elapsed < CLICK_THRESHOLD_MS && _highlightedWindow != IntPtr.Zero)
             {
@@ -461,12 +443,17 @@ namespace QuickShot.Views
                 double minY = Math.Min(y1, y2);
                 double maxY = Math.Max(y1, y2);
 
-                if (maxX - minX > 5 && maxY - minY > 5)
+                if (maxX - minX > 5 && maxY - minY > 5 && canvasW > 0 && canvasH > 0)
                 {
-                    int px = (int)Math.Round(minX * _scaleX);
-                    int py = (int)Math.Round(minY * _scaleY);
-                    int pw = (int)Math.Round(maxX * _scaleX) - px;
-                    int ph = (int)Math.Round(maxY * _scaleY) - py;
+                    double relX1 = Math.Max(0.0, Math.Min(1.0, minX / canvasW));
+                    double relX2 = Math.Max(0.0, Math.Min(1.0, maxX / canvasW));
+                    double relY1 = Math.Max(0.0, Math.Min(1.0, minY / canvasH));
+                    double relY2 = Math.Max(0.0, Math.Min(1.0, maxY / canvasH));
+
+                    int px = (int)Math.Round(relX1 * _screenBitmap.Width);
+                    int py = (int)Math.Round(relY1 * _screenBitmap.Height);
+                    int pw = (int)Math.Round((relX2 - relX1) * _screenBitmap.Width);
+                    int ph = (int)Math.Round((relY2 - relY1) * _screenBitmap.Height);
 
                     if (px < 0) { pw += px; px = 0; }
                     if (py < 0) { ph += py; py = 0; }
